@@ -83,6 +83,13 @@ class LayoutStrategy {
   std::vector<Word> getNextLine(WordProvider& provider, TextRenderer& renderer, int16_t maxWidth, bool& isParagraphEnd);
   std::vector<Word> getPrevLine(WordProvider& provider, TextRenderer& renderer, int16_t maxWidth, bool& isParagraphEnd);
 
+  // Word splitting helpers
+  std::vector<int> findHyphenPositions(const String& word);
+  int findBestHyphenSplitForward(const String& word, const std::vector<int>& hyphenPositions, int16_t availableWidth,
+                                 TextRenderer& renderer);
+  int findBestHyphenSplitBackward(const String& word, const std::vector<int>& hyphenPositions, int16_t availableWidth,
+                                  TextRenderer& renderer);
+
   // Shared space width used by layout and navigation
   uint16_t spaceWidth_ = 0;
 };
