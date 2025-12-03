@@ -10,6 +10,8 @@
 // Forward declarations
 class TextRenderer;
 class WordProvider;
+class HyphenationStrategy;
+enum class Language;
 
 /**
  * Abstract base class for line breaking strategies.
@@ -37,6 +39,7 @@ class LayoutStrategy {
     int16_t pageWidth;
     int16_t pageHeight;
     TextAlignment alignment;
+    Language language;  // Language for hyphenation
   };
 
   // Paragraph result: multiple lines of words and the provider end position for each line
@@ -45,8 +48,12 @@ class LayoutStrategy {
     std::vector<int> lineEndPositions;  // provider index after each line
   };
 
-  virtual ~LayoutStrategy() = default;
+  LayoutStrategy();
+  virtual ~LayoutStrategy();
   virtual Type getType() const = 0;
+
+  // Set the language for hyphenation (updates hyphenation strategy)
+  void setLanguage(Language language);
 
   // Main layout method: takes words from a provider and renders them
   // Returns the provider character index at the end of the page (end position)
@@ -79,19 +86,24 @@ class LayoutStrategy {
                                             bool& isParagraphEnd);
 
  protected:
+  struct HyphenSplit {
+    int position;        // Character position of the split
+    bool isAlgorithmic;  // True if hyphen needs to be inserted, false if it exists in text
+    bool found;          // True if a valid split was found
+  };
   // Shared helpers used by multiple strategies
   std::vector<Word> getNextLine(WordProvider& provider, TextRenderer& renderer, int16_t maxWidth, bool& isParagraphEnd);
   std::vector<Word> getPrevLine(WordProvider& provider, TextRenderer& renderer, int16_t maxWidth, bool& isParagraphEnd);
 
   // Word splitting helpers
-  std::vector<int> findHyphenPositions(const String& word);
-  int findBestHyphenSplitForward(const String& word, const std::vector<int>& hyphenPositions, int16_t availableWidth,
-                                 TextRenderer& renderer);
-  int findBestHyphenSplitBackward(const String& word, const std::vector<int>& hyphenPositions, int16_t availableWidth,
-                                  TextRenderer& renderer);
+  HyphenSplit findBestHyphenSplitForward(const String& word, int16_t availableWidth, TextRenderer& renderer);
+  HyphenSplit findBestHyphenSplitBackward(const String& word, int16_t availableWidth, TextRenderer& renderer);
 
   // Shared space width used by layout and navigation
   uint16_t spaceWidth_ = 0;
+
+  // Hyphenation strategy for current language
+  HyphenationStrategy* hyphenationStrategy_ = nullptr;
 };
 
 #endif

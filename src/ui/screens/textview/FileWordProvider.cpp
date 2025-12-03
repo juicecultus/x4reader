@@ -165,6 +165,30 @@ int FileWordProvider::getCurrentIndex() {
   return (int)index_;
 }
 
+char FileWordProvider::peekChar(int offset) {
+  long pos = (long)index_ + offset;
+  if (pos < 0 || pos >= (long)fileSize_) {
+    return '\0';
+  }
+  return charAt((size_t)pos);
+}
+
+bool FileWordProvider::isInsideWord() {
+  if (index_ <= 0 || index_ >= fileSize_) {
+    return false;
+  }
+
+  // Helper lambda to check if a character is a word character (not whitespace/control)
+  auto isWordChar = [](char c) { return c != '\0' && c != ' ' && c != '\n' && c != '\t' && c != '\r'; };
+
+  // Check character before current position
+  char prevChar = charAt(index_ - 1);
+  // Check character at current position
+  char currentChar = charAt(index_);
+
+  return isWordChar(prevChar) && isWordChar(currentChar);
+}
+
 void FileWordProvider::ungetWord() {
   index_ = prevIndex_;
 }

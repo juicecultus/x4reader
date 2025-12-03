@@ -12,6 +12,7 @@
 #include "textview/GreedyLayoutStrategy.h"
 #include "textview/KnuthPlassLayoutStrategy.h"
 #include "textview/StringWordProvider.h"
+#include "textview/hyphenation/HyphenationStrategy.h"
 
 TextViewerScreen::TextViewerScreen(EInkDisplay& display, TextRenderer& renderer, SDCardManager& sdManager,
                                    UIManager& uiManager)
@@ -31,6 +32,10 @@ TextViewerScreen::TextViewerScreen(EInkDisplay& display, TextRenderer& renderer,
   layoutConfig.pageWidth = 480;
   layoutConfig.pageHeight = 800;
   layoutConfig.alignment = LayoutStrategy::ALIGN_LEFT;
+  layoutConfig.language = Language::GERMAN;  // Default to German hyphenation
+
+  // Set the language on the layout strategy
+  layoutStrategy->setLanguage(layoutConfig.language);
 }
 
 TextViewerScreen::~TextViewerScreen() {

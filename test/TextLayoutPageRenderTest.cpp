@@ -29,6 +29,7 @@ struct TestRun {
   bool incrementalMode;
   bool disableRendering;
   int maxPages;
+  int pageStart;
 };
 
 void runTestConfiguration(const TestRun& testRun, TestUtils::TestRunner& runner, EInkDisplay& display,
@@ -67,7 +68,7 @@ void runTestConfiguration(const TestRun& testRun, TestUtils::TestRunner& runner,
 
   // Traverse the entire document forward, and immediately check backward navigation
   std::vector<std::pair<int, int>> pageRanges;  // pair<start, end>
-  int pageStart = 249636;
+  int pageStart = testRun.pageStart;
   int pageIndex = 0;
 
   // // move towards the first occurence of the word "vorzuziehen" for initial debugging
@@ -138,6 +139,10 @@ void runTestConfiguration(const TestRun& testRun, TestUtils::TestRunner& runner,
         std::cerr << errorMsg << "\n";
         runner.expectTrue(false, testRun.name + " - Backward navigation from page " + std::to_string(pageIndex),
                           errorMsg);
+
+        if (!testRun.disableRendering) {
+          savePage(pageIndex, "_1");
+        }
       }
     }
 
@@ -222,12 +227,12 @@ int main() {
 
   // Define test configurations
   std::vector<TestRun> testConfigs = {
-      // {"Greedy - Incremental All Pages - No Render", true,  true,  true,  99999},
-      // {"Greedy - Normal - No Render",                true,  false, true,  99999},
-      {"KnuthPlass - Incremental - No Render", false, true,  true,  99999},
-      {"KnuthPlass - Normal - No Render",      false, false, true,  99999},
-      {"KnuthPlass - Normal - With Render",    false, false, false, 99999},
-      // {"KnuthPlass - Normal - With Render", false, false, false, 1},
+      // {"Greedy - Incremental All Pages - No Render", true,  true,  true,  99999, 0},
+      // {"Greedy - Normal - No Render",                true,  false, true,  99999, 0},
+      // {"KnuthPlass - Incremental - No Render",       false, true,  true,  99999, 0},
+      // {"KnuthPlass - Normal - No Render",            false, false, true,  99999, 0},
+      {"KnuthPlass - Normal - With Render", false, false, false, 99999, 0},
+      // {"KnuthPlass - Normal - With Render",          false, false, false, 20,    0},
   };
 
   // Run all test configurations

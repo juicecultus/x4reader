@@ -81,3 +81,8 @@ void GreedyLayoutStrategy::renderLine(const std::vector<LayoutStrategy::Word>& l
 
   return;
 }
+
+std::vector<LayoutStrategy::Word> GreedyLayoutStrategy::test_getNextLine(WordProvider& provider, TextRenderer& renderer,
+                                                                         int16_t maxWidth, bool& isParagraphEnd) {
+  return getNextLine(provider, renderer, maxWidth, isParagraphEnd);
+}

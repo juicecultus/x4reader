@@ -3,12 +3,27 @@
 #include "../../../rendering/TextRenderer.h"
 #include "WString.h"
 #include "WordProvider.h"
+#include "hyphenation/GermanHyphenation.h"
+#include "hyphenation/HyphenationStrategy.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
 
 #include <cmath>
+
+LayoutStrategy::LayoutStrategy() : hyphenationStrategy_(new NoHyphenation()) {}
+
+LayoutStrategy::~LayoutStrategy() {
+  delete hyphenationStrategy_;
+}
+
+void LayoutStrategy::setLanguage(Language language) {
+  if (hyphenationStrategy_) {
+    delete hyphenationStrategy_;
+  }
+  hyphenationStrategy_ = createHyphenationStrategy(language);
+}
 
 std::vector<LayoutStrategy::Word> LayoutStrategy::getNextLine(WordProvider& provider, TextRenderer& renderer,
                                                               int16_t maxWidth, bool& isParagraphEnd) {
@@ -40,19 +55,29 @@ std::vector<LayoutStrategy::Word> LayoutStrategy::getNextLine(WordProvider& prov
     if (currentWidth + spaceNeeded > maxWidth) {
       // Word doesn't fit, try to split it at a hyphen
       int16_t availableWidth = maxWidth - currentWidth - spaceWidth_;
-      std::vector<int> hyphenPositions = findHyphenPositions(word.text);
-      int splitPos = findBestHyphenSplitForward(word.text, hyphenPositions, availableWidth, renderer);
+      HyphenSplit split = {-1, false, false};
 
-      if (splitPos >= 0) {
-        // Successfully found a split position - add first part (up to and including the hyphen)
-        String firstPart = word.text.substring(0, splitPos + 1);
+      // if (allowHyphenation)
+      { split = findBestHyphenSplitForward(word.text, availableWidth, renderer); }
+      if (split.found) {
+        // Successfully found a split position
+        String firstPart;
+        if (split.isAlgorithmic) {
+          // Add hyphen for algorithmic split
+          firstPart = word.text.substring(0, split.position) + "-";
+        } else {
+          // Include existing hyphen
+          firstPart = word.text.substring(0, split.position + 1);
+        }
+
         int16_t bx2 = 0, by2 = 0;
         uint16_t bw2 = 0, bh2 = 0;
         renderer.getTextBounds(firstPart.c_str(), 0, 0, &bx2, &by2, &bw2, &bh2);
         line.push_back({firstPart, static_cast<int16_t>(bw2)});
 
-        // Move provider position to right after the hyphen
-        provider.setPosition(wordStartIndex + splitPos + 1);
+        // Move provider position: after the split point
+        // For existing hyphens, skip past the hyphen character (+1)
+        provider.setPosition(wordStartIndex + split.position + (split.isAlgorithmic ? 0 : 1));
         break;
       } else if (currentWidth > 0) {
         // Can't split, put it back and end line
@@ -72,14 +97,16 @@ std::vector<LayoutStrategy::Word> LayoutStrategy::getNextLine(WordProvider& prov
 std::vector<LayoutStrategy::Word> LayoutStrategy::getPrevLine(WordProvider& provider, TextRenderer& renderer,
                                                               int16_t maxWidth, bool& isParagraphEnd) {
   isParagraphEnd = false;
-
   std::vector<LayoutStrategy::Word> line;
   int16_t currentWidth = 0;
+  bool firstWord = true;
 
   while (provider.getCurrentIndex() > 0) {
     int wordEndIndex = provider.getCurrentIndex();
     String text = provider.getPrevWord();
     int wordStartIndex = provider.getCurrentIndex();
+    bool isFirstWord = firstWord;
+    firstWord = false;
 
     // Measure the rendered width using the renderer
     int16_t bx = 0, by = 0;
@@ -89,9 +116,23 @@ std::vector<LayoutStrategy::Word> LayoutStrategy::getPrevLine(WordProvider& prov
 
     // Check for breaks - breaks are returned as special words
     if (word.text == String("\n")) {
-      isParagraphEnd = true;
-      break;
+      // check if we are at an empty line or at the start of a paragraph
+      if (isFirstWord) {
+        String prevWord = provider.getPrevWord();
+        provider.ungetWord();
+        if (prevWord == String("\n")) {
+          isParagraphEnd = true;
+          break;
+        }
+        // we are at the start of the paragraph
+        continue;
+      } else {
+        provider.ungetWord();
+        isParagraphEnd = true;
+        break;
+      }
     }
+
     if (word.text[0] == ' ') {
       continue;
     }
@@ -101,19 +142,21 @@ std::vector<LayoutStrategy::Word> LayoutStrategy::getPrevLine(WordProvider& prov
     if (currentWidth + spaceNeeded > maxWidth) {
       // Word doesn't fit, try to split it at a hyphen
       int16_t availableWidth = maxWidth - currentWidth - spaceWidth_;
-      std::vector<int> hyphenPositions = findHyphenPositions(word.text);
-      int splitPos = findBestHyphenSplitBackward(word.text, hyphenPositions, availableWidth, renderer);
+      HyphenSplit split = {-1, false, false};
 
-      if (splitPos >= 0) {
-        // Successfully found a split position - add second part (after the hyphen)
-        String secondPart = word.text.substring(splitPos + 1, word.text.length());
+      // if (allowHyphenation)
+      { split = findBestHyphenSplitBackward(word.text, availableWidth, renderer); }
+      if (split.found) {
+        // Successfully found a split position - add second part (after the split)
+        // Take text after the split point
+        String secondPart = word.text.substring(split.position, word.text.length());
         int16_t bx2 = 0, by2 = 0;
         uint16_t bw2 = 0, bh2 = 0;
         renderer.getTextBounds(secondPart.c_str(), 0, 0, &bx2, &by2, &bw2, &bh2);
         line.insert(line.begin(), {secondPart, static_cast<int16_t>(bw2)});
 
-        // Move provider position to right after the hyphen
-        provider.setPosition(wordStartIndex + splitPos + 1);
+        // Move provider position to the split point
+        provider.setPosition(wordStartIndex + split.position);
         break;
       } else if (currentWidth > 0) {
         // Can't split, put it back
@@ -134,13 +177,6 @@ int LayoutStrategy::getPreviousPageStart(WordProvider& provider, TextRenderer& r
   // Save current provider state
   int savedPosition = provider.getCurrentIndex();
 
-  // Set provider to the end of current page
-  provider.setPosition(currentStartPosition);
-  String word = provider.getPrevWord();
-  if (word != String("\n")) {
-    provider.ungetWord();
-  }
-
   const int16_t maxWidth = config.pageWidth - config.marginLeft - config.marginRight;
   renderer.getTextBounds(" ", 0, 0, nullptr, nullptr, &spaceWidth_, nullptr);
 
@@ -148,40 +184,70 @@ int LayoutStrategy::getPreviousPageStart(WordProvider& provider, TextRenderer& r
   const int16_t availableHeight = config.pageHeight - config.marginTop - config.marginBottom;
   const int maxLines = ceil(availableHeight / (double)config.lineHeight);
 
-  // Go backwards, laying out lines in reverse order
-  // Stop after reaching a paragraph break
+  // Go backwards more than one page to the end of the paragraph and then move forward to find the start
+  provider.setPosition(currentStartPosition);
   int linesBack = 0;
-  // position after going backwards to the paragraph break
-  int positionAtBreak = 0;
 
   while (provider.getCurrentIndex() > 0) {
+    linesBack++;
+
     bool isParagraphEnd;
     std::vector<LayoutStrategy::Word> line = getPrevLine(provider, renderer, maxWidth, isParagraphEnd);
 
-    linesBack++;
-
-    // Stop if we hit a paragraph break
-    if (isParagraphEnd && linesBack >= maxLines) {
-      positionAtBreak = provider.getCurrentIndex() + 1;
-      provider.setPosition(positionAtBreak);
+    // Stop if we hit a paragraph break and have gone back enough
+    if (isParagraphEnd && linesBack >= maxLines * 1.25) {
       break;
     }
   }
 
-  int linesMoved = 0;
+  // Now we're positioned far enough back. Move forward, storing the start position of each line
+  // until we reach currentStartPosition
+  std::vector<int> lineStartPositions;
+  lineStartPositions.push_back(provider.getCurrentIndex());
 
-  // Move forward the difference between screen lines and lines we moved back
-  int linesToMoveForward = linesBack - maxLines;
-  if (linesToMoveForward > 0) {
-    while (provider.hasNextWord() && linesMoved < linesToMoveForward) {
-      bool dummyParagraphEnd;
-      std::vector<LayoutStrategy::Word> line = getNextLine(provider, renderer, maxWidth, dummyParagraphEnd);
-      linesMoved++;
+  while (provider.getCurrentIndex() < currentStartPosition && provider.hasNextWord()) {
+    int lineStart = provider.getCurrentIndex();
+    bool isParagraphEnd;
+    std::vector<LayoutStrategy::Word> line = getNextLine(provider, renderer, maxWidth, isParagraphEnd);
+
+    linesBack--;
+
+    if (provider.getCurrentIndex() > lineStart) {
+      lineStartPositions.push_back(provider.getCurrentIndex());
+    }
+
+    // If we've reached or passed the current start position, stop
+    if (provider.getCurrentIndex() >= currentStartPosition) {
+      break;
     }
   }
 
-  // The current position is where the previous page starts
-  int previousPageStart = provider.getCurrentIndex();
+  // Find the line start that is exactly maxLines before currentStartPosition
+  int previousPageStart = 0;
+
+  // Find which line index corresponds to currentStartPosition
+  int currentLineIndex = -1;
+  for (int i = 0; i < lineStartPositions.size(); i++) {
+    if (lineStartPositions[i] >= currentStartPosition) {
+      currentLineIndex = i;
+      break;
+    }
+  }
+
+  // The previous page should start maxLines lines before the current page
+  if (currentLineIndex >= 0) {
+    int targetIndex = currentLineIndex - maxLines;
+    if (targetIndex >= 0 && targetIndex < lineStartPositions.size()) {
+      previousPageStart = lineStartPositions[targetIndex];
+    } else if (targetIndex < 0) {
+      // We don't have enough lines before, use the first available position
+      previousPageStart = lineStartPositions[0];
+    }
+  } else {
+    // Fallback: couldn't find current position in our forward scan
+    // This shouldn't happen, but return beginning if it does
+    previousPageStart = lineStartPositions[0];
+  }
 
   // Restore provider state
   provider.setPosition(savedPosition);
@@ -189,60 +255,73 @@ int LayoutStrategy::getPreviousPageStart(WordProvider& provider, TextRenderer& r
   return previousPageStart;
 }
 
-std::vector<int> LayoutStrategy::findHyphenPositions(const String& word) {
-  std::vector<int> positions;
-
-  for (int i = 0; i < word.length(); i++) {
-    if (word[i] == '-') {
-      positions.push_back(i);
-    }
-  }
-
-  return positions;
-}
-
-int LayoutStrategy::findBestHyphenSplitForward(const String& word, const std::vector<int>& hyphenPositions,
-                                               int16_t availableWidth, TextRenderer& renderer) {
+LayoutStrategy::HyphenSplit LayoutStrategy::findBestHyphenSplitForward(const String& word, int16_t availableWidth,
+                                                                       TextRenderer& renderer) {
   // Find the last (rightmost) hyphen position where the first part fits
-  int splitPos = -1;
+  std::vector<int> hyphenPositions;
+  if (hyphenationStrategy_) {
+    std::string stdWord = word.c_str();
+    hyphenPositions = hyphenationStrategy_->findHyphenPositions(stdWord, 6, 3);
+  }
+  HyphenSplit result = {-1, false, false};
 
   for (int i = 0; i < hyphenPositions.size(); i++) {
     int pos = hyphenPositions[i];
-    String candidate = word.substring(0, pos + 1);
+    bool isAlgorithmic = pos < 0;
+    int actualPos = isAlgorithmic ? -(pos + 1) : pos;
+
+    // For algorithmic positions, we need to add a hyphen
+    // For existing hyphens, include the hyphen character
+    String candidate;
+    if (isAlgorithmic) {
+      candidate = word.substring(0, actualPos) + "-";
+    } else {
+      candidate = word.substring(0, actualPos + 1);
+    }
+
     int16_t bx = 0, by = 0;
     uint16_t bw = 0, bh = 0;
     renderer.getTextBounds(candidate.c_str(), 0, 0, &bx, &by, &bw, &bh);
 
     if (bw <= availableWidth) {
-      splitPos = pos;  // This hyphen works, keep looking for a later one
+      result = {actualPos, isAlgorithmic, true};  // This hyphen works, keep looking for a later one
     } else {
       break;  // Too wide, stop searching
     }
   }
 
-  return splitPos;
+  return result;
 }
 
-int LayoutStrategy::findBestHyphenSplitBackward(const String& word, const std::vector<int>& hyphenPositions,
-                                                int16_t availableWidth, TextRenderer& renderer) {
+LayoutStrategy::HyphenSplit LayoutStrategy::findBestHyphenSplitBackward(const String& word, int16_t availableWidth,
+                                                                        TextRenderer& renderer) {
   // Find the earliest (leftmost) hyphen position where the second part fits
-  int splitPos = -1;
+  std::vector<int> hyphenPositions;
+  if (hyphenationStrategy_) {
+    std::string stdWord = word.c_str();
+    hyphenPositions = hyphenationStrategy_->findHyphenPositions(stdWord, 6, 3);
+  }
+  HyphenSplit result = {-1, false, false};
 
   for (int i = hyphenPositions.size() - 1; i >= 0; i--) {
     int pos = hyphenPositions[i];
-    String candidate = word.substring(pos + 1, word.length());
+    bool isAlgorithmic = pos < 0;
+    int actualPos = isAlgorithmic ? -(pos + 1) : pos;
+
+    // For both algorithmic and existing hyphens, take text after the split point
+    String candidate = word.substring(actualPos, word.length());
     int16_t bx = 0, by = 0;
     uint16_t bw = 0, bh = 0;
     renderer.getTextBounds(candidate.c_str(), 0, 0, &bx, &by, &bw, &bh);
 
     if (bw <= availableWidth) {
-      splitPos = pos;  // This hyphen works, keep looking for an earlier one
+      result = {actualPos, isAlgorithmic, true};  // This hyphen works, keep looking for an earlier one
     } else {
       break;  // Too wide, stop searching
     }
   }
 
-  return splitPos;
+  return result;
 }
 
 std::vector<LayoutStrategy::Word> LayoutStrategy::test_getPrevLine(WordProvider& provider, TextRenderer& renderer,

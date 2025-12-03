@@ -18,6 +18,8 @@ class StringWordProvider : public WordProvider {
   float getPercentage(int index) override;
   void setPosition(int index) override;
   int getCurrentIndex() override;
+  char peekChar(int offset = 0) override;
+  bool isInsideWord() override;
   void ungetWord() override;
   void reset() override;
 

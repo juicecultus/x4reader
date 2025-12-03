@@ -99,6 +99,30 @@ int StringWordProvider::getCurrentIndex() {
   return index_;
 }
 
+char StringWordProvider::peekChar(int offset) {
+  int pos = index_ + offset;
+  if (pos < 0 || pos >= text_.length()) {
+    return '\0';
+  }
+  return text_[pos];
+}
+
+bool StringWordProvider::isInsideWord() {
+  if (index_ <= 0 || index_ >= text_.length()) {
+    return false;
+  }
+
+  // Helper lambda to check if a character is a word character (not whitespace/control)
+  auto isWordChar = [](char c) { return c != '\0' && c != ' ' && c != '\n' && c != '\t' && c != '\r'; };
+
+  // Check character before current position
+  char prevChar = text_[index_ - 1];
+  // Check character at current position
+  char currentChar = text_[index_];
+
+  return isWordChar(prevChar) && isWordChar(currentChar);
+}
+
 void StringWordProvider::ungetWord() {
   index_ = prevIndex_;
 }

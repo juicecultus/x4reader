@@ -44,6 +44,8 @@ int KnuthPlassLayoutStrategy::layoutText(WordProvider& provider, TextRenderer& r
 
     // Collect words for the paragraph
     while (y < maxY && !isParagraphEnd) {
+      // Check if this could be the last line on the page
+      // bool isLastLineOnPage = (y + config.lineHeight >= maxY);
       std::vector<LayoutStrategy::Word> line = getNextLine(provider, renderer, maxWidth, isParagraphEnd);
       y += config.lineHeight;
       lineCount++;
@@ -56,6 +58,8 @@ int KnuthPlassLayoutStrategy::layoutText(WordProvider& provider, TextRenderer& r
 
     // // print out all the collected words for the paragraph
     // Serial.print("Paragraph words: ");
+    // // Serial.print("Paragraph end: ");
+    // // Serial.println(isParagraphEnd ? "true" : "false");
     // for (const auto& word : words) {
     //   Serial.print(word.text);
     //   Serial.print("/");

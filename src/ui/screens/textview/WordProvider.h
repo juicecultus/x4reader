@@ -28,6 +28,14 @@ class WordProvider {
   // Returns the current index position in the text
   virtual int getCurrentIndex() = 0;
 
+  // Peek at a character at the current index + offset (without changing position)
+  // Returns '\0' if position is out of bounds
+  virtual char peekChar(int offset = 0) = 0;
+
+  // Check if current position is inside a word (surrounded by non-whitespace characters)
+  // Returns true if both previous and current characters are word characters
+  virtual bool isInsideWord() = 0;
+
   // Puts back the last word retrieved by getNextWord (moves index back)
   virtual void ungetWord() = 0;
 
