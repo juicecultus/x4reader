@@ -19,3 +19,4 @@ __pycache__
 .vscode
 /test/output
 /firmware_backup.bin
+/data/books

@@ -588,6 +588,61 @@ char EpubWordProvider::peekChar(int offset) {
   return '\0';  // Not implemented
 }
 
+int EpubWordProvider::consumeChars(int n) {
+  if (!parser_ || n <= 0) {
+    return 0;
+  }
+
+  int consumed = 0;
+
+  while (consumed < n) {
+    SimpleXmlParser::NodeType nodeType = parser_->getNodeType();
+
+    // If we don't have a current node, read one
+    if (nodeType == SimpleXmlParser::None || nodeType == SimpleXmlParser::EndOfFile) {
+      if (!parser_->read()) {
+        break;  // End of document
+      }
+      continue;
+    }
+
+    if (nodeType == SimpleXmlParser::Text) {
+      // Consume characters from this text node
+      while (consumed < n && parser_->hasMoreTextChars()) {
+        char c = parser_->readTextNodeCharForward();
+        // Skip carriage returns, they don't count as consumed characters
+        if (c != '\r') {
+          consumed++;
+        }
+      }
+
+      // If text node exhausted, move to next node
+      if (!parser_->hasMoreTextChars()) {
+        if (!parser_->read()) {
+          break;  // End of document
+        }
+      }
+    } else if (nodeType == SimpleXmlParser::Element || nodeType == SimpleXmlParser::EndElement) {
+      // Skip inline elements, stop at block elements
+      String elementName = parser_->getName();
+      if (isBlockElement(elementName)) {
+        break;  // Stop at block elements
+      }
+      // Skip inline element
+      if (!parser_->read()) {
+        break;
+      }
+    } else {
+      // Skip other node types
+      if (!parser_->read()) {
+        break;
+      }
+    }
+  }
+
+  return consumed;
+}
+
 bool EpubWordProvider::isInsideWord() {
   if (!parser_) {
     return false;

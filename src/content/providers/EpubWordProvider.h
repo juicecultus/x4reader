@@ -32,6 +32,7 @@ class EpubWordProvider : public WordProvider {
   void setPosition(int index) override;
   int getCurrentIndex() override;
   char peekChar(int offset = 0) override;
+  int consumeChars(int n) override;
   bool isInsideWord() override;
   void ungetWord() override;
   void reset() override;
