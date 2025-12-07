@@ -12,7 +12,8 @@ struct NodeSnapshot {
   String name;
   bool isEmpty = false;
   String text;
-  SimpleXmlParser::Position position;
+  size_t filePosStart;
+  size_t filePosEnd;
 };
 
 String readTextForward(SimpleXmlParser& parser) {
@@ -35,13 +36,14 @@ std::vector<NodeSnapshot> readForwardNodes(TestUtils::TestRunner& runner, const 
   SimpleXmlParser parser;
   std::vector<NodeSnapshot> result;
 
-  runner.expectTrue(parser.open(path), "Open XHTML for forward pass");
+  runner.expectTrue(parser.open(path), "Open XHTML for forward pass", "", true);
   while (parser.read()) {
     NodeSnapshot snap;
     snap.type = parser.getNodeType();
     snap.name = parser.getName();
     snap.isEmpty = parser.isEmptyElement();
-    snap.position = parser.getPosition();
+    snap.filePosStart = parser.getElementStartPos();
+    snap.filePosEnd = parser.getElementEndPos();
 
     if (snap.type == SimpleXmlParser::Text) {
       snap.text = readTextForward(parser);
@@ -57,26 +59,26 @@ std::vector<NodeSnapshot> readBackwardNodes(TestUtils::TestRunner& runner, const
   SimpleXmlParser parser;
   std::vector<NodeSnapshot> result;
 
-  runner.expectTrue(parser.open(path), "Open XHTML for backward pass");
-  SimpleXmlParser::Position endPos;
-  endPos.filePos = parser.getFileSize();
-  parser.setPosition(endPos);
+  runner.expectTrue(parser.open(path), "Open XHTML for backward pass", "", true);
+  parser.seekToFilePosition(parser.getFileSize());
 
   while (parser.readBackward()) {
     NodeSnapshot snap;
     snap.type = parser.getNodeType();
     snap.name = parser.getName();
     snap.isEmpty = parser.isEmptyElement();
-    snap.position = parser.getPosition();
+    snap.filePosStart = parser.getElementStartPos();
+    snap.filePosEnd = parser.getElementEndPos();
 
     if (snap.type == SimpleXmlParser::Text) {
       snap.text = readTextBackward(parser);
     }
 
+    // Skip duplicates (shouldn't happen but being safe)
     if (!result.empty()) {
       const auto& last = result.back();
       if (last.type == snap.type && last.name == snap.name && last.isEmpty == snap.isEmpty &&
-          last.position.filePos == snap.position.filePos) {
+          last.filePosStart == snap.filePosStart && last.filePosEnd == snap.filePosEnd) {
         continue;
       }
     }
@@ -91,91 +93,129 @@ void testForwardBackwardSymmetry(TestUtils::TestRunner& runner, const char* path
   auto forward = readForwardNodes(runner, path);
   auto backward = readBackwardNodes(runner, path);
 
-  runner.expectTrue(!forward.empty(), "Forward pass captured nodes");
-  runner.expectTrue(!backward.empty(), "Backward pass captured nodes");
+  runner.expectTrue(!forward.empty(), "Forward pass captured nodes", "", true);
+  runner.expectTrue(!backward.empty(), "Backward pass captured nodes", "", true);
 
-  size_t compareCount = std::min(forward.size(), backward.size());
-  bool sizeOk = std::max(forward.size(), backward.size()) - compareCount <= 1;
-  runner.expectTrue(sizeOk, "Comparable node counts (tolerance 1)");
+  std::reverse(backward.begin(), backward.end());
+
+  runner.expectTrue(forward.size() == backward.size(), "Node counts match", "", true);
   std::cout << "Forward nodes: " << forward.size() << ", backward nodes: " << backward.size() << "\n";
 
-  if (compareCount > 0) {
-    const auto& fFirst = forward.front();
-    const auto& bLast = backward.back();
-    runner.expectTrue(fFirst.type == bLast.type, "First forward node mirrors last backward node type");
-  }
-}
+  int positionMismatches = 0;
+  const int MAX_POSITION_REPORTS = 10;
 
-void testPositionRestoration(TestUtils::TestRunner& runner, const char* path,
-                             const std::vector<NodeSnapshot>& snapshots) {
-  SimpleXmlParser parser;
-  runner.expectTrue(parser.open(path), "Open XHTML for restoration");
+  for (size_t i = 0; i < forward.size() && i < backward.size(); i++) {
+    const auto& f = forward[i];
+    const auto& b = backward[i];
 
-  for (size_t i = 0; i < snapshots.size(); i++) {
-    const auto& snap = snapshots[i];
-    // Only restore by file position (and text offset), ensuring no cached metadata is needed.
-    SimpleXmlParser::Position seekPos;
-    seekPos.filePos = snap.position.filePos;
-    seekPos.textCurrent = snap.position.textCurrent;
+    if (f.type != b.type || f.name != b.name || f.isEmpty != b.isEmpty) {
+      std::cout << "Mismatch at node " << i << ": forward type=" << f.type << " name=" << f.name.c_str()
+                << " empty=" << f.isEmpty << ", backward type=" << b.type << " name=" << b.name.c_str()
+                << " empty=" << b.isEmpty << "\n";
+    }
 
-    bool setOk = parser.setPosition(seekPos);
-    runner.expectTrue(setOk, "Set position for node " + std::to_string(i));
-    runner.expectTrue(parser.getNodeType() == snap.type, "Node type restored for node " + std::to_string(i));
-    runner.expectTrue(parser.getName() == snap.name, "Node name restored for node " + std::to_string(i));
-    runner.expectTrue(parser.isEmptyElement() == snap.isEmpty, "Empty flag restored for node " + std::to_string(i));
+    runner.expectTrue(f.type == b.type, "Node " + std::to_string(i) + " type matches", "", true);
+    runner.expectTrue(f.name == b.name, "Node " + std::to_string(i) + " name matches", "", true);
+    runner.expectTrue(f.isEmpty == b.isEmpty, "Node " + std::to_string(i) + " isEmpty matches", "", true);
 
-    if (snap.type == SimpleXmlParser::Text) {
-      String rebuilt = readTextForward(parser);
-      runner.expectTrue(rebuilt == snap.text, "Text restored for node " + std::to_string(i));
+    if (f.type == SimpleXmlParser::Text) {
+      runner.expectTrue(f.text == b.text, "Node " + std::to_string(i) + " text matches", "", true);
+    }
+
+    // Check position consistency
+    if (f.filePosStart != b.filePosStart) {
+      if (positionMismatches < MAX_POSITION_REPORTS) {
+        std::cout << "*** Position START mismatch at node " << i << " (type=" << f.type << " name=" << f.name.c_str()
+                  << "): forward=" << f.filePosStart << " backward=" << b.filePosStart << "\n";
+      }
+      positionMismatches++;
+    }
+    if (f.filePosEnd != b.filePosEnd) {
+      if (positionMismatches < MAX_POSITION_REPORTS) {
+        std::cout << "*** Position END mismatch at node " << i << " (type=" << f.type << " name=" << f.name.c_str()
+                  << "): forward=" << f.filePosEnd << " backward=" << b.filePosEnd << "\n";
+      }
+      positionMismatches++;
     }
   }
 
-  parser.close();
+  if (positionMismatches > 0) {
+    std::cout << "Total position mismatches: " << positionMismatches << " out of " << forward.size() << " nodes\n";
+  }
+
+  runner.expectTrue(positionMismatches == 0, "All node positions match between forward and backward reading");
 }
 
 void testMidTextNavigation(TestUtils::TestRunner& runner, const char* path) {
   SimpleXmlParser parser;
-  runner.expectTrue(parser.open(path), "Open XHTML for mid-text test");
+  runner.expectTrue(parser.open(path), "Open XHTML for mid-text test", "", true);
 
+  int textNodesTested = 0;
   while (parser.read()) {
     if (parser.getNodeType() != SimpleXmlParser::Text)
       continue;
 
-    SimpleXmlParser::Position start = parser.getPosition();
+    size_t startPos = parser.getFilePosition();
     String fullText = readTextForward(parser);
-    size_t offset = std::min<size_t>(fullText.length() / 2, 30);
-    if (fullText.length() == 0)
-      break;
+    if (fullText.length() < 2)
+      continue;
 
-    bool setStart = parser.setPosition(start);
-    runner.expectTrue(setStart, "Reset to start of text node");
+    // Calculate a mid-point offset (in characters)
+    size_t offset = fullText.length() / 2;
+
+    // Reset to start and read partway to get the file position at the midpoint
+    parser.seekToFilePosition(startPos);
+    runner.expectTrue(parser.getNodeType() == SimpleXmlParser::Text, "Text node restored after seek to start", "",
+                      true);
 
     for (size_t i = 0; i < offset && parser.hasMoreTextChars(); i++) {
       parser.readTextNodeCharForward();
     }
 
-    SimpleXmlParser::Position mid = parser.getPosition();
-    String fromMid = readTextForward(parser);
-    runner.expectTrue(fromMid == fullText.substring(offset), "Resumed text matches from offset");
+    // Save the file position at the midpoint
+    size_t midPos = parser.getFilePosition();
 
-    bool setMid = parser.setPosition(mid);
-    runner.expectTrue(setMid, "Return to mid text position");
+    // Now seek to midPos - this should restore us to the exact same state
+    parser.seekToFilePosition(midPos);
+    runner.expectTrue(parser.getNodeType() == SimpleXmlParser::Text, "Text node restored after seek to mid", "", true);
+    String forwardPart = readTextForward(parser);
 
-    String backToStart = readTextBackward(parser);
-    runner.expectTrue(backToStart == fullText.substring(0, offset), "Backward navigation restores prefix");
-    break;
+    // Seek to midPos again and read backward to get the first half
+    parser.seekToFilePosition(midPos);
+    runner.expectTrue(parser.getNodeType() == SimpleXmlParser::Text, "Text node restored after second seek to mid", "",
+                      true);
+    String backwardPart = readTextBackward(parser);
+
+    // Combine backward + forward should equal the full text
+    String combined = backwardPart + forwardPart;
+    runner.expectTrue(combined == fullText,
+                      "Combined text matches full text for node " + std::to_string(textNodesTested), "", true);
+
+    if (combined != fullText) {
+      std::cout << "Full text length: " << fullText.length() << ", combined length: " << combined.length() << "\n";
+      std::cout << "Backward part length: " << backwardPart.length()
+                << ", forward part length: " << forwardPart.length() << "\n";
+      std::cout << "Full text: \"" << fullText.c_str() << "\"\n";
+      std::cout << "Backward part: \"" << backwardPart.c_str() << "\"\n";
+      std::cout << "Forward part: \"" << forwardPart.c_str() << "\"\n";
+      std::cout << "Combined: \"" << combined.c_str() << "\"\n";
+    }
+
+    textNodesTested++;
   }
+
+  runner.expectTrue(textNodesTested > 0, "At least one text node was tested", "", true);
+  std::cout << "Tested " << textNodesTested << " text nodes for mid-text navigation\n";
 
   parser.close();
 }
 
 int main() {
   TestUtils::TestRunner runner("SimpleXmlParser Position Test");
-  const char* xhtmlPath = "data/books/1A9A8A09379E4577B2346DECBE09D19A.xhtml";
+  const char* xhtmlPath = "data/books/5F7754037AF147879447BB32918DD7A6.xhtml";
 
-  auto forward = readForwardNodes(runner, xhtmlPath);
+  readForwardNodes(runner, xhtmlPath);
   testForwardBackwardSymmetry(runner, xhtmlPath);
-  testPositionRestoration(runner, xhtmlPath, forward);
   testMidTextNavigation(runner, xhtmlPath);
 
   return runner.allPassed() ? 0 : 1;

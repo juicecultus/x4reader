@@ -4,6 +4,7 @@
 #include <SD.h>
 
 #include <cstdint>
+
 #include "../epub/EpubReader.h"
 #include "../xml/SimpleXmlParser.h"
 #include "StringWordProvider.h"
@@ -61,13 +62,8 @@ class EpubWordProvider : public WordProvider {
   SimpleXmlParser* parser_ = nullptr;
   int currentChapter_ = 0;  // Current chapter index (0-based)
 
-  SimpleXmlParser::Position prevPosition_;                          // Previous parser position for ungetWord()
-  bool prevInsideParagraph_ = false;                                // Previous paragraph state for ungetWord()
-  size_t fileSize_;                                                 // Total file size for percentage calculation
-  bool insideParagraph_ = false;                                    // Track if we're inside a <p> tag
-  bool pendingNewline_ = false;  // For backward reading: newline to emit before next paragraph content
-
-  bool computeInsideParagraph();
+  size_t prevFilePos_ = 0;  // Previous parser position for ungetWord()
+  size_t fileSize_;         // Total file size for percentage calculation
 };
 
 #endif
