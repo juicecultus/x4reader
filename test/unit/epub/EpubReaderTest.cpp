@@ -11,10 +11,10 @@
  * The EPUB is loaded once and reused across all tests.
  */
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <filesystem>
 
 #include "content/epub/EpubReader.h"
 #include "test_config.h"
@@ -158,8 +158,17 @@ void testExtractDir(TestUtils::TestRunner& runner, EpubReader& reader) {
 
   runner.expectTrue(extractDir.length() > 0, "Extract directory should not be empty");
 
-  // Check that extract dir contains epub filename
-  bool containsEpubName = extractDir.indexOf("Bobiverse") >= 0;
+  // Check that extract dir contains epub filename (without extension)
+  // Extract the base name from TEST_EPUB_PATH for comparison
+  std::string testPath = TEST_EPUB_PATH;
+  size_t lastSlash = testPath.rfind('/');
+  std::string baseName = (lastSlash != std::string::npos) ? testPath.substr(lastSlash + 1) : testPath;
+  size_t lastDot = baseName.rfind('.');
+  if (lastDot != std::string::npos) {
+    baseName = baseName.substr(0, lastDot);
+  }
+
+  bool containsEpubName = extractDir.indexOf(baseName.c_str()) >= 0;
   runner.expectTrue(containsEpubName, "Extract directory should contain EPUB filename");
 }
 
@@ -488,8 +497,7 @@ int main() {
   std::cout << "Test EPUB: " << EpubReaderTests::TEST_EPUB_PATH << "\n";
 
   if (!std::filesystem::exists(EpubReaderTests::TEST_EPUB_PATH)) {
-    std::cout << "\nSkipping EpubReader tests: missing fixture at " << EpubReaderTests::TEST_EPUB_PATH
-              << "\n";
+    std::cout << "\nSkipping EpubReader tests: missing fixture at " << EpubReaderTests::TEST_EPUB_PATH << "\n";
     return 0;
   }
 

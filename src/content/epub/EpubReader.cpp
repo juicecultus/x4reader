@@ -366,8 +366,9 @@ bool EpubReader::parseContentOpf() {
 
   Serial.printf("Parsing content.opf: %s\n", opfPath.c_str());
 
-  // Parse content.opf to get spine items
-  // Allocate parser on heap to avoid stack overflow (parser has 8KB buffer)
+  // Memory-efficient parsing: only store XHTML manifest items (not images/fonts/css)
+  // Spine only references XHTML files, so we don't need the rest
+
   SimpleXmlParser* parser = new SimpleXmlParser();
   if (!parser->open(opfPath.c_str())) {
     Serial.println("ERROR: Failed to open content.opf for parsing");
@@ -375,115 +376,129 @@ bool EpubReader::parseContentOpf() {
     return false;
   }
 
-  // Step 1: Build a map of manifest items (id -> href)
-  // We'll use a simple array approach since we have limited items
+  // Step 1: Find <spine> element and get toc attribute
+  String tocId = "";
+  if (findNextElement(parser, "spine")) {
+    tocId = parser->getAttribute("toc");
+  }
+  parser->close();
+
+  // Step 2: If we have a toc id, find its href in manifest
+  if (!tocId.isEmpty()) {
+    if (!parser->open(opfPath.c_str())) {
+      delete parser;
+      return false;
+    }
+    while (findNextElement(parser, "item")) {
+      String id = parser->getAttribute("id");
+      if (id == tocId) {
+        tocNcxPath_ = parser->getAttribute("href");
+        Serial.printf("Found toc.ncx reference: %s\n", tocNcxPath_.c_str());
+        break;
+      }
+    }
+    parser->close();
+  }
+
+  // Step 3: Build manifest lookup - only for XHTML items (what spine references)
+  // This is much smaller than the full manifest
   struct ManifestItem {
     String id;
     String href;
   };
 
-  const int MAX_MANIFEST_ITEMS = 100;
-  ManifestItem* manifest = new ManifestItem[MAX_MANIFEST_ITEMS];
+  // Count XHTML items first
+  if (!parser->open(opfPath.c_str())) {
+    delete parser;
+    return false;
+  }
+
+  int xhtmlCount = 0;
+  while (findNextElement(parser, "item")) {
+    String mediaType = parser->getAttribute("media-type");
+    if (mediaType.indexOf("xhtml") >= 0 || mediaType.indexOf("html") >= 0) {
+      xhtmlCount++;
+    }
+  }
+  parser->close();
+
+  Serial.printf("Found %d XHTML manifest items\n", xhtmlCount);
+
+  // Allocate and collect XHTML manifest items
+  ManifestItem* manifest = new ManifestItem[xhtmlCount];
   int manifestCount = 0;
 
-  // Find all <item> elements in <manifest>
-  while (findNextElement(parser, "item") && manifestCount < MAX_MANIFEST_ITEMS) {
-    String id = parser->getAttribute("id");
-    String href = parser->getAttribute("href");
+  if (!parser->open(opfPath.c_str())) {
+    delete parser;
+    delete[] manifest;
+    return false;
+  }
 
-    if (!id.isEmpty() && !href.isEmpty()) {
-      manifest[manifestCount].id = id;
-      manifest[manifestCount].href = href;
+  while (findNextElement(parser, "item") && manifestCount < xhtmlCount) {
+    String mediaType = parser->getAttribute("media-type");
+    if (mediaType.indexOf("xhtml") >= 0 || mediaType.indexOf("html") >= 0) {
+      manifest[manifestCount].id = parser->getAttribute("id");
+      manifest[manifestCount].href = parser->getAttribute("href");
       manifestCount++;
     }
   }
-
-  Serial.printf("Found %d manifest items\\n", manifestCount);
-
-  // Close and reopen to start from beginning
   parser->close();
+
+  // Step 4: Count spine items
   if (!parser->open(opfPath.c_str())) {
-    Serial.println("ERROR: Failed to reopen content.opf for spine parsing");
     delete parser;
     delete[] manifest;
     return false;
   }
 
-  // Find <spine> element and get toc attribute (references toc.ncx in manifest)
-  if (findNextElement(parser, "spine")) {
-    String tocId = parser->getAttribute("toc");
-    if (!tocId.isEmpty()) {
-      // Look up the toc.ncx href in manifest
-      for (int i = 0; i < manifestCount; i++) {
-        if (manifest[i].id == tocId) {
-          tocNcxPath_ = manifest[i].href;
-          Serial.printf("Found toc.ncx reference: %s\n", tocNcxPath_.c_str());
-          break;
-        }
-      }
-    }
-  }
-
-  // Close and reopen to find spine items (itemref elements)
-  parser->close();
-  if (!parser->open(opfPath.c_str())) {
-    Serial.println("ERROR: Failed to reopen content.opf for itemref parsing");
-    delete parser;
-    delete[] manifest;
-    return false;
-  }
-
-  // Use a temporary list to collect spine items
-  const int INITIAL_CAPACITY = 20;
-  int capacity = INITIAL_CAPACITY;
-  SpineItem* tempSpine = new SpineItem[capacity];
-  spineCount_ = 0;
-
+  int spineItemCount = 0;
   while (findNextElement(parser, "itemref")) {
     String idref = parser->getAttribute("idref");
-
     if (!idref.isEmpty()) {
+      spineItemCount++;
+    }
+  }
+  parser->close();
+
+  Serial.printf("Found %d spine itemrefs\n", spineItemCount);
+
+  // Allocate spine array
+  spine_ = new SpineItem[spineItemCount];
+  spineCount_ = 0;
+
+  // Step 5: Collect spine items and resolve hrefs using manifest lookup
+  if (!parser->open(opfPath.c_str())) {
+    delete parser;
+    delete[] manifest;
+    delete[] spine_;
+    spine_ = nullptr;
+    return false;
+  }
+
+  while (findNextElement(parser, "itemref") && spineCount_ < spineItemCount) {
+    String idref = parser->getAttribute("idref");
+    if (!idref.isEmpty()) {
+      spine_[spineCount_].idref = idref;
+      spine_[spineCount_].href = "";
+
       // Look up href in manifest
-      String href = "";
-      for (int i = 0; i < manifestCount; i++) {
-        if (manifest[i].id == idref) {
-          href = manifest[i].href;
+      for (int j = 0; j < manifestCount; j++) {
+        if (manifest[j].id == idref) {
+          spine_[spineCount_].href = manifest[j].href;
           break;
         }
       }
 
-      if (!href.isEmpty()) {
-        // Grow array if needed
-        if (spineCount_ >= capacity) {
-          capacity *= 2;
-          SpineItem* newSpine = new SpineItem[capacity];
-          for (int i = 0; i < spineCount_; i++) {
-            newSpine[i].idref = tempSpine[i].idref;
-            newSpine[i].href = tempSpine[i].href;
-          }
-          delete[] tempSpine;
-          tempSpine = newSpine;
-        }
-
-        tempSpine[spineCount_].idref = idref;
-        tempSpine[spineCount_].href = href;
-        spineCount_++;
-      } else {
+      if (spine_[spineCount_].href.isEmpty()) {
         Serial.printf("WARNING: No manifest entry for idref: %s\n", idref.c_str());
       }
+      spineCount_++;
     }
   }
-
-  // Allocate final spine array with exact size and copy data
-  spine_ = new SpineItem[spineCount_];
-  for (int i = 0; i < spineCount_; i++) {
-    spine_[i].idref = tempSpine[i].idref;
-    spine_[i].href = tempSpine[i].href;
-  }
-  delete[] tempSpine;
-
-  delete[] manifest;
   parser->close();
+
+  // Done with manifest lookup
+  delete[] manifest;
   delete parser;
 
   // Calculate spine item sizes for book-wide percentage calculation
