@@ -27,6 +27,7 @@ constexpr bool TEST_FORWARD_SEEK_CONSISTENCY = true;
 constexpr bool TEST_BACKWARD_SEEK_CONSISTENCY = true;
 constexpr bool TEST_BIDIRECTIONAL_SEEK_CONSISTENCY = true;
 constexpr bool TEST_READ_ALL_THEN_VERIFY = true;
+constexpr bool TEST_MID_WORD_SEEK_RECONSTRUCT = true;
 constexpr int MAX_WORDS = 500;
 constexpr int MAX_FAILURES_TO_REPORT = 10;
 
@@ -416,6 +417,133 @@ void testReadAllThenVerify(TestUtils::TestRunner& runner) {
 }
 
 /**
+ * Test: Seek into the middle of words and reconstruct by reading left and right
+ *
+ * This test:
+ * 1. Reads words forward and records their positions
+ * 2. For each word with length > 1, seeks to positions inside the word
+ * 3. Reads left (getPrevWord) and right (getNextWord) from that position
+ * 4. Verifies the concatenated result equals the original word
+ */
+void testMidWordSeekReconstruct(TestUtils::TestRunner& runner) {
+  const char* testName = TestGlobals::getProviderName();
+  std::cout << "\n=== Test: Mid-Word Seek Reconstruct (" << testName << ") ===\n";
+
+  TestGlobals::resetProvider();
+  WordProvider& provider = TestGlobals::provider();
+
+  // First, read forward to collect words with their positions
+  std::vector<WordInfo> words;
+  std::cout << "  Phase 1: Reading words and recording positions...\n";
+
+  while (provider.hasNextWord() && (int)words.size() < MAX_WORDS) {
+    WordInfo info;
+    info.positionBefore = provider.getCurrentIndex();
+    info.word = provider.getNextWord();
+    info.positionAfter = provider.getCurrentIndex();
+
+    if (info.word.length() == 0) {
+      break;
+    }
+
+    // Only collect actual words (not whitespace tokens)
+    bool isWord = false;
+    for (size_t i = 0; i < info.word.length(); i++) {
+      char c = info.word[i];
+      if (c != ' ' && c != '\n' && c != '\t' && c != '\r') {
+        isWord = true;
+        break;
+      }
+    }
+
+    if (isWord && info.word.length() > 1) {
+      words.push_back(info);
+    }
+  }
+
+  std::cout << "  Found " << words.size() << " words (length > 1) to test.\n";
+
+  // Phase 2: For each word, seek to middle positions and reconstruct
+  std::cout << "  Phase 2: Testing mid-word seek and reconstruct...\n";
+
+  int failCount = 0;
+  int successCount = 0;
+  int testedPositions = 0;
+
+  for (size_t wordIdx = 0; wordIdx < words.size() && failCount < MAX_FAILURES_TO_REPORT; wordIdx++) {
+    const WordInfo& info = words[wordIdx];
+    int wordLen = info.positionAfter - info.positionBefore;
+
+    // Test seeking to each position inside the word
+    for (int offset = 1; offset < wordLen && failCount < MAX_FAILURES_TO_REPORT; offset++) {
+      int midPosition = info.positionBefore + offset;
+      testedPositions++;
+
+      // Seek to mid-word position
+      provider.setPosition(midPosition);
+
+      // Verify we're inside a word
+      if (!provider.isInsideWord()) {
+        // This might be OK for some edge cases (e.g., position at word boundary)
+        continue;
+      }
+
+      // Save position before reading
+      int posBeforeLeft = provider.getCurrentIndex();
+
+      // Read left part (from word start to current position)
+      String leftPart = provider.getPrevWord();
+      int posAfterLeft = provider.getCurrentIndex();
+
+      // Now seek back to the mid position to read right
+      provider.setPosition(midPosition);
+
+      // Read right part (from current position to word end)
+      String rightPart = provider.getNextWord();
+      int posAfterRight = provider.getCurrentIndex();
+
+      // Reconstruct the word
+      String reconstructed = leftPart + rightPart;
+
+      // Compare with original
+      if (reconstructed != info.word) {
+        std::cout << "\n  *** RECONSTRUCTION MISMATCH at word index " << wordIdx << " ***\n";
+        std::cout << "    Original word:    \"" << info.word.c_str() << "\" (pos " << info.positionBefore << "-"
+                  << info.positionAfter << ")\n";
+        std::cout << "    Mid position:     " << midPosition << " (offset " << offset << ")\n";
+        std::cout << "    Left part:        \"" << leftPart.c_str() << "\" (pos " << posBeforeLeft << "->"
+                  << posAfterLeft << ")\n";
+        std::cout << "    Right part:       \"" << rightPart.c_str() << "\" (pos " << midPosition << "->"
+                  << posAfterRight << ")\n";
+        std::cout << "    Reconstructed:    \"" << reconstructed.c_str() << "\"\n";
+        failCount++;
+      } else {
+        successCount++;
+      }
+    }
+
+    if ((wordIdx + 1) % 100 == 0) {
+      std::cout << "    Processed " << (wordIdx + 1) << "/" << words.size() << " words...\n";
+    }
+  }
+
+  std::cout << "\n  === Results ===\n";
+  std::cout << "    Words tested: " << words.size() << "\n";
+  std::cout << "    Positions tested: " << testedPositions << "\n";
+  std::cout << "    Successful reconstructions: " << successCount << "\n";
+  std::cout << "    Failures: " << failCount << "\n";
+
+  if (failCount == 0) {
+    std::cout << "    All mid-word seek reconstructions successful!\n";
+    runner.expectTrue(true, std::string(testName) + ": Mid-word seek reconstruct verified");
+  } else {
+    std::cout << "    FAILED: " << failCount << " reconstructions did not match\n";
+    runner.expectTrue(false, std::string(testName) + ": Mid-word seek reconstruct failed for " +
+                                 std::to_string(failCount) + " positions");
+  }
+}
+
+/**
  * Run all seek tests
  */
 void runAllTests(TestUtils::TestRunner& runner) {
@@ -433,6 +561,10 @@ void runAllTests(TestUtils::TestRunner& runner) {
 
   if (TEST_READ_ALL_THEN_VERIFY) {
     testReadAllThenVerify(runner);
+  }
+
+  if (TEST_MID_WORD_SEEK_RECONSTRUCT) {
+    testMidWordSeekReconstruct(runner);
   }
 }
 
