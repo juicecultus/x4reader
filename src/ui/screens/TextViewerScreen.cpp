@@ -332,7 +332,7 @@ void TextViewerScreen::prevPage() {
     return;
 
   // If at the beginning of current chapter, try to go to previous chapter
-  if (pageStartIndex <= 0) {
+  if (!provider->hasPrevWord()) {
     if (provider->hasChapters()) {
       int currentChapter = provider->getCurrentChapter();
       if (currentChapter > 0) {
@@ -346,7 +346,7 @@ void TextViewerScreen::prevPage() {
       }
     }
     // If we can't go to previous chapter (or no chapters), do nothing
-    if (pageStartIndex <= 0)
+    if (!provider->hasPrevWord())
       return;
   }
 
@@ -398,7 +398,7 @@ void TextViewerScreen::jumpToPreviousChapter() {
     return;
 
   // If not at start, go to start first
-  if (pageStartIndex > 0) {
+  if (provider->hasPrevWord()) {
     provider->setPosition(0);
     pageStartIndex = 0;
     pageEndIndex = 0;

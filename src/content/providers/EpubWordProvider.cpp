@@ -79,6 +79,20 @@ EpubWordProvider::EpubWordProvider(const char* path, size_t bufSize)
 
     // Position parser at first node for reading
     parser_->read();
+    
+    // Find the position of the first actual content by reading the first word
+    // Save position before first word, then reset
+    size_t startPos = parser_->getFilePosition();
+    String firstWord = getNextWord();
+    if (firstWord.length() > 0) {
+      // The position before we read the first word is the first content position
+      firstContentPos_ = startPos;
+    } else {
+      firstContentPos_ = 0;
+    }
+    // Reset to beginning
+    parser_->seekToFilePosition(0);
+    parser_->read();
     prevFilePos_ = parser_->getFilePosition();
 
     valid_ = true;
@@ -167,6 +181,20 @@ bool EpubWordProvider::openChapter(int chapterIndex) {
 
   // Position parser at first node for reading
   parser_->read();
+  
+  // Find the position of the first actual content by reading the first word
+  // Save position before first word, then reset
+  size_t startPos = parser_->getFilePosition();
+  String firstWord = getNextWord();
+  if (firstWord.length() > 0) {
+    // The position before we read the first word is the first content position
+    firstContentPos_ = startPos;
+  } else {
+    firstContentPos_ = 0;
+  }
+  // Reset to beginning of chapter
+  parser_->seekToFilePosition(0);
+  parser_->read();
   prevFilePos_ = parser_->getFilePosition();
 
   return true;
@@ -210,7 +238,8 @@ bool EpubWordProvider::hasPrevWord() {
   if (!parser_) {
     return false;
   }
-  return parser_->getFilePosition() > 0;
+  // Check if we're past the first content position in this chapter
+  return parser_->getFilePosition() > firstContentPos_;
 }
 
 String EpubWordProvider::getNextWord() {

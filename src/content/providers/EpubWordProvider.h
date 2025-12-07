@@ -65,6 +65,7 @@ class EpubWordProvider : public WordProvider {
 
   size_t prevFilePos_ = 0;  // Previous parser position for ungetWord()
   size_t fileSize_;         // Total file size for percentage calculation
+  size_t firstContentPos_ = 0;  // Position of first readable content in chapter
 };
 
 #endif
