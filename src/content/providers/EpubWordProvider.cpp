@@ -19,12 +19,42 @@ static bool equalsIgnoreCase(const String& str, const char* target) {
   return true;
 }
 
+// Helper to check if element name is a non-content element that should be skipped entirely
+// (including all children, e.g., <head>, <style>, <script>)
+static bool isNonContentElement(const String& name) {
+  if (name.length() == 0)
+    return false;
+
+  const char* nonContentElements[] = {"head", "style", "script"};
+  for (size_t i = 0; i < sizeof(nonContentElements) / sizeof(nonContentElements[0]); i++) {
+    const char* elem = nonContentElements[i];
+    size_t elemLen = strlen(elem);
+    if (name.length() != elemLen)
+      continue;
+
+    bool match = true;
+    for (size_t j = 0; j < elemLen; j++) {
+      char c1 = name.charAt(j);
+      char c2 = elem[j];
+      if (c1 >= 'A' && c1 <= 'Z')
+        c1 += 32;
+      if (c1 != c2) {
+        match = false;
+        break;
+      }
+    }
+    if (match)
+      return true;
+  }
+  return false;
+}
+
 // Helper to check if element name is a block-level element (case-insensitive)
 static bool isBlockElement(const String& name) {
   if (name.length() == 0)
     return false;
 
-  const char* blockElements[] = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "title", "li", "br"};
+  const char* blockElements[] = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "br"};
   for (size_t i = 0; i < sizeof(blockElements) / sizeof(blockElements[0]); i++) {
     const char* blockElem = blockElements[i];
     size_t blockLen = strlen(blockElem);
@@ -46,6 +76,40 @@ static bool isBlockElement(const String& name) {
       return true;
   }
   return false;
+}
+
+bool EpubWordProvider::skipElement(const String& elementName, bool forward) {
+  if (!parser_) {
+    return false;
+  }
+
+  int depth = 1;
+  while (depth > 0) {
+    bool readSuccess = forward ? parser_->read() : parser_->readBackward();
+    if (!readSuccess) {
+      return false;  // Reached end/beginning of document
+    }
+
+    SimpleXmlParser::NodeType innerType = parser_->getNodeType();
+
+    // When going forward: Element increases depth, EndElement decreases
+    // When going backward: EndElement increases depth, Element decreases
+    SimpleXmlParser::NodeType increaseType = forward ? SimpleXmlParser::Element : SimpleXmlParser::EndElement;
+    SimpleXmlParser::NodeType decreaseType = forward ? SimpleXmlParser::EndElement : SimpleXmlParser::Element;
+
+    if (innerType == increaseType) {
+      String innerName = parser_->getName();
+      if (equalsIgnoreCase(innerName, elementName.c_str()) && !parser_->isEmptyElement()) {
+        depth++;
+      }
+    } else if (innerType == decreaseType) {
+      String innerName = parser_->getName();
+      if (equalsIgnoreCase(innerName, elementName.c_str())) {
+        depth--;
+      }
+    }
+  }
+  return true;
 }
 
 EpubWordProvider::EpubWordProvider(const char* path, size_t bufSize)
@@ -373,6 +437,14 @@ String EpubWordProvider::getNextWord() {
     } else if (nodeType == SimpleXmlParser::Element) {
       String elementName = parser_->getName();
 
+      // Skip non-content elements entirely (head, style, script)
+      if (isNonContentElement(elementName)) {
+        if (!skipElement(elementName, true) || !parser_->read()) {
+          return String("");  // End of document
+        }
+        continue;
+      }
+
       if (isBlockElement(elementName)) {
         // Check if this is a self-closing element (like <br/>)
         if (parser_->isEmptyElement()) {
@@ -515,6 +587,15 @@ String EpubWordProvider::getPrevWord() {
     } else if (nodeType == SimpleXmlParser::EndElement) {
       // Block element end tag - return newline
       String elementName = parser_->getName();
+
+      // Skip non-content elements entirely (head, style, script) when reading backward
+      if (isNonContentElement(elementName)) {
+        if (!skipElement(elementName, false) || !parser_->readBackward()) {
+          return String("");  // Beginning of document
+        }
+        continue;
+      }
+
       if (isBlockElement(elementName)) {
         // Save position of this element for ungetWord before advancing
         prevFilePos_ = parser_->getElementEndPos();

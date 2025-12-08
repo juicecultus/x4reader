@@ -52,6 +52,12 @@ class EpubWordProvider : public WordProvider {
   // Opens a specific chapter (spine item) for reading
   bool openChapter(int chapterIndex);
 
+  // Skip an element and all its children (for non-content elements like head, style, script)
+  // elementName: the name of the element to skip
+  // forward: true to skip forward (from start tag to end tag), false to skip backward (from end tag to start tag)
+  // Returns true if successful, false if reached end/beginning of document
+  bool skipElement(const String& elementName, bool forward);
+
   bool valid_ = false;
   bool isEpub_ = false;  // True if source is EPUB, false if direct XHTML
   size_t bufSize_ = 0;
