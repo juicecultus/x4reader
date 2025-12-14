@@ -158,16 +158,18 @@ void TextViewerScreen::handleButtons(Buttons& buttons) {
     savePositionToFile();
     saveSettingsToFile();
     uiManager.showScreen(UIManager::ScreenId::FileBrowser);
-  } else if (buttons.isDown(Buttons::LEFT)) {
-    if (buttons.getHoldDuration(Buttons::LEFT) >= LONG_PRESS_MS) {
+  } else if (buttons.isDown(Buttons::LEFT) || buttons.isDown(Buttons::VOLUME_UP)) {
+    uint8_t btn = buttons.isDown(Buttons::LEFT) ? Buttons::LEFT : Buttons::VOLUME_UP;
+    if (buttons.getHoldDuration(btn) >= LONG_PRESS_MS) {
       // Long press - jump to next chapter (or end if last chapter)
       jumpToNextChapter();
     } else {
       // Short press - go to next page (or next chapter if at end)
       nextPage();
     }
-  } else if (buttons.isDown(Buttons::RIGHT)) {
-    if (buttons.getHoldDuration(Buttons::RIGHT) >= LONG_PRESS_MS) {
+  } else if (buttons.isDown(Buttons::RIGHT) || buttons.isDown(Buttons::VOLUME_DOWN)) {
+    uint8_t btn = buttons.isDown(Buttons::RIGHT) ? Buttons::RIGHT : Buttons::VOLUME_DOWN;
+    if (buttons.getHoldDuration(btn) >= LONG_PRESS_MS) {
       // Long press - go to chapter start, then previous chapter
       jumpToPreviousChapter();
     } else {
@@ -176,12 +178,12 @@ void TextViewerScreen::handleButtons(Buttons& buttons) {
     }
   }
 
-  if (buttons.isPressed(Buttons::VOLUME_UP)) {
-    // switch through alignments (cycle through enum values safely)
-    layoutConfig.alignment =
-        static_cast<LayoutStrategy::TextAlignment>((static_cast<int>(layoutConfig.alignment) + 1) % 3);
-    showPage();
-  }
+  // if (buttons.isPressed(Buttons::VOLUME_UP)) {
+  //   // switch through alignments (cycle through enum values safely)
+  //   layoutConfig.alignment =
+  //       static_cast<LayoutStrategy::TextAlignment>((static_cast<int>(layoutConfig.alignment) + 1) % 3);
+  //   showPage();
+  // }
 }
 
 void TextViewerScreen::show() {
@@ -355,7 +357,7 @@ void TextViewerScreen::prevPage() {
       return;
   }
 
-  textRenderer.setFont(&NotoSans26);
+  textRenderer.setFontFamily(&bookerlyFamily);
 
   // Find where the previous page starts
   pageStartIndex = layoutStrategy->getPreviousPageStart(*provider, textRenderer, layoutConfig, pageStartIndex);
