@@ -494,7 +494,12 @@ void TextViewerScreen::openFile(const String& sdPath) {
   // Set chapter first (if provider supports it), then position within chapter
   unsigned long provStart = millis();
   if (provider->hasChapters() && currentChapter > 0) {
+    Serial.printf("Setting chapter to %d\n", currentChapter);
     provider->setChapter(currentChapter);
+  } else {
+    Serial.printf("No chapters\n");
+    currentChapter = 0;
+    provider->setChapter(0);
   }
   provider->setPosition(pageStartIndex);
   unsigned long provMs = millis() - provStart;

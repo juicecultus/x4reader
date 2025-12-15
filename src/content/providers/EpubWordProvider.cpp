@@ -581,10 +581,10 @@ String EpubWordProvider::normalizeWhitespace(const String& text) {
   bool lastWasSpace = false;
 
   for (int i = 0; i < text.length(); i++) {
-    unsigned char c = (unsigned char)text.charAt(i);
+    char c = text.charAt(i);
 
-    // Handle non-breaking space forms by converting to a normal space
-    if (c == 0xC2 && i + 1 < text.length() && (unsigned char)text.charAt(i + 1) == 0xA0) {
+    // Convert non-breaking space to regular space
+    if (c == '\xC2' && i + 1 < text.length() && text.charAt(i + 1) == '\xA0') {
       c = ' ';
       i++;  // skip the second byte (0xA0)
     }
