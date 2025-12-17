@@ -9,6 +9,7 @@
 
 #include "../../core/BatteryMonitor.h"
 #include "../../core/Buttons.h"
+#include "../../core/Settings.h"
 #include "../UIManager.h"
 
 FileBrowserScreen::FileBrowserScreen(EInkDisplay& display, TextRenderer& renderer, SDCardManager& sdManager,
@@ -167,6 +168,12 @@ void FileBrowserScreen::offsetSelection(int offset) {
     sdScrollOffset = sdSelectedIndex;
   }
 
+  // Persist the current selection into consolidated settings
+  if (!sdFiles.empty()) {
+    Settings& s = uiManager.getSettings();
+    s.setString(String("filebrowser.selected"), sdFiles[sdSelectedIndex]);
+  }
+
   show();
 }
 
@@ -203,8 +210,23 @@ void FileBrowserScreen::loadFolder(int maxFiles) {
   std::sort(sdFiles.begin(), sdFiles.end(),
             [](const String& a, const String& b) { return std::strcmp(a.c_str(), b.c_str()) < 0; });
 
-  if (sdSelectedIndex >= sdFiles.size()) {
-    sdSelectedIndex = 0;
-    sdScrollOffset = 0;
+  // Restore saved selection if available and present in this folder
+  sdSelectedIndex = 0;
+  sdScrollOffset = 0;
+  if (!sdFiles.empty()) {
+    Settings& s = uiManager.getSettings();
+    String saved = s.getString(String("filebrowser.selected"), String(""));
+    if (saved.length() > 0) {
+      for (size_t i = 0; i < sdFiles.size(); ++i) {
+        if (sdFiles[i] == saved) {
+          sdSelectedIndex = (int)i;
+          if (sdSelectedIndex >= SD_LINES_PER_SCREEN)
+            sdScrollOffset = sdSelectedIndex - SD_LINES_PER_SCREEN + 1;
+          else
+            sdScrollOffset = 0;
+          break;
+        }
+      }
+    }
   }
 }
