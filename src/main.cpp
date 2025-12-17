@@ -164,7 +164,7 @@ void setup() {
   }
 
   // Write debug log
-  writeDebugLog();
+  // writeDebugLog();
 
   // Initialize display driver FIRST (allocate frame buffers before EPUB test to avoid fragmentation)
   Serial.printf("Free memory before display init: %d bytes\n", ESP.getFreeHeap());
