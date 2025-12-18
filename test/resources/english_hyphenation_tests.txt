@@ -1,0 +1,75 @@
+# English hyphenation test data
+# Format: word|hyphenated|frequency
+# Use = to mark hyphenation points
+
+# Common words
+beautiful|beau=ti=ful|1000
+programming|pro=gram=ming|500
+computer|com=put=er|1000
+information|in=for=ma=tion|800
+wonderful|won=der=ful|700
+important|im=por=tant|900
+different|dif=fer=ent|850
+understanding|un=der=stand=ing|600
+interesting|in=ter=est=ing|750
+development|de=vel=op=ment|500
+
+# Double consonants (split between)
+running|run=ning|1000
+letter|let=ter|900
+sitting|sit=ting|800
+better|bet=ter|950
+bigger|big=ger|700
+happy|hap=py|900
+butter|but=ter|600
+summer|sum=mer|700
+dinner|din=ner|650
+cotton|cot=ton|500
+
+# Consonant clusters
+father|fa=ther|900
+mother|moth=er|900
+brother|broth=er|800
+graphic|graph=ic|400
+telephone|tel=e=phone|600
+elephant|el=e=phant|500
+chocolate|choc=o=late|600
+children|chil=dren|850
+strength|strength|300
+through|through|1000
+
+# VCV pattern (consonant goes with following vowel)
+open|o=pen|800
+even|e=ven|750
+over|o=ver|900
+able|a=ble|850
+taken|tak=en|700
+paper|pa=per|600
+river|riv=er|550
+tiger|ti=ger|400
+music|mu=sic|700
+labor|la=bor|500
+
+# Prefixes and suffixes
+unhappy|un=hap=py|400
+redo|re=do|300
+preview|pre=view|350
+misunderstand|mis=un=der=stand|200
+international|in=ter=na=tion=al|450
+unfortunately|un=for=tu=nate=ly|300
+independently|in=de=pen=dent=ly|250
+communication|com=mu=ni=ca=tion|400
+transportation|trans=por=ta=tion|350
+responsibility|re=spon=si=bil=i=ty|300
+
+# Technical words
+algorithm|al=go=rithm|200
+database|da=ta=base|300
+software|soft=ware|400
+hardware|hard=ware|350
+internet|in=ter=net|500
+technology|tech=nol=o=gy|450
+application|ap=pli=ca=tion|400
+implementation|im=ple=men=ta=tion|250
+architecture|ar=chi=tec=ture|200
+infrastructure|in=fra=struc=ture|150

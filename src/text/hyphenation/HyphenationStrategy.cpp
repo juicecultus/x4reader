@@ -1,5 +1,6 @@
 #include "HyphenationStrategy.h"
 
+#include "EnglishHyphenation.h"
 #include "GermanHyphenation.h"
 
 // Implementation of the base class method
@@ -61,6 +62,37 @@ class GermanHyphenationStrategy : public HyphenationStrategy {
 };
 
 /**
+ * English hyphenation strategy implementation
+ */
+class EnglishHyphenationStrategy : public HyphenationStrategy {
+ public:
+  std::vector<size_t> hyphenate(const std::string& word, size_t minWordLength = 6,
+                                size_t minFragmentLength = 3) override {
+    // Only hyphenate words that meet minimum length requirement
+    if (word.length() < minWordLength) {
+      return std::vector<size_t>();
+    }
+
+    // Get hyphenation positions from English algorithm
+    std::vector<size_t> positions = EnglishHyphenation::hyphenate(word);
+
+    // Filter out positions that would create fragments that are too short
+    std::vector<size_t> filtered;
+    for (size_t pos : positions) {
+      if (pos >= minFragmentLength && pos <= word.length() - minFragmentLength) {
+        filtered.push_back(pos);
+      }
+    }
+
+    return filtered;
+  }
+
+  Language getLanguage() const override {
+    return Language::ENGLISH;
+  }
+};
+
+/**
  * Factory function implementation
  */
 HyphenationStrategy* createHyphenationStrategy(Language language) {
@@ -70,8 +102,7 @@ HyphenationStrategy* createHyphenationStrategy(Language language) {
     case Language::BASIC:
       return new BasicHyphenation();
     case Language::ENGLISH:
-      // TODO: Implement English hyphenation
-      return new NoHyphenation();
+      return new EnglishHyphenationStrategy();
     case Language::NONE:
     default:
       return new NoHyphenation();
