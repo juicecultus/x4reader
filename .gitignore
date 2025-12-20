@@ -22,3 +22,8 @@ __pycache__
 /data/books
 /resources/books
 __pycache__
+/resources/fonts/Bookerly.ttf
+/resources/fonts/Bookerly Italic.ttf
+/resources/fonts/Bookerly Bold.ttf
+/resources/fonts/Bookerly Bold Italic.ttf
+/3_1_1_backup.bin

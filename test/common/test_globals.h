@@ -44,7 +44,7 @@ namespace TestGlobals {
 // #define USE_STRING_PROVIDER
 // inline const char* g_testFilePath = "data/books/bobiverse 1.txt";
 
-// // --- Option 2: FileWordProvider ---
+// --- Option 2: FileWordProvider ---
 // #define USE_FILE_PROVIDER
 // inline const char* g_testFilePath = "resources/books/test 0.txt";
 
@@ -53,11 +53,20 @@ namespace TestGlobals {
 // The test repository contains bobiverse one.epub; update the test path to match an existing file.
 // inline const char* g_testFilePath = "resources/books/mabuse.epub";
 
-inline const char* g_testFilePath = "resources/books/snow crash.epub";
-inline const int chapterToTest = 11;  // Chapter index to test in EPUB (0-based)
+// inline const char* g_testFilePath = "resources/books/snow crash eng.epub";
+// inline const int chapterToTest = 11;  // Chapter index to test in EPUB (0-based)
+
+inline const char* g_testFilePath = "resources/books/snow crash ger.epub";
+inline const int chapterToTest = 12;  // Chapter index to test in EPUB (0-based)
+
+// inline const char* g_testFilePath = "resources/books/ohler.epub";
+// inline const int chapterToTest = 5;  // Chapter index to test in EPUB (0-based)
 
 // inline const char* g_testFilePath = "resources/books/bobiverse one.epub";
 // inline const int chapterToTest = 67;  // Chapter index to test in EPUB (0-based)
+
+// inline const char* g_testFilePath = "resources/books/latin-style-footnotes-test.epub";
+// inline const int chapterToTest = 3;  // Chapter index to test in EPUB (0-based)
 
 // inline const char* g_testFilePath = "resources/books/mabuse.xhtml";
 
