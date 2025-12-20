@@ -127,6 +127,12 @@ class String {
     }
   }
 
+  long toInt() const {
+    try {
+      return std::stoi(s_);
+    } catch (...) { return 0; }
+  }
+
   // Comparison operator for use in std::map
   bool operator<(const String& other) const {
     return s_ < other.s_;

@@ -182,7 +182,8 @@ class EpubReader {
   CssParser* cssParser_ = nullptr;
   std::vector<String> cssFiles_;  // List of CSS file paths (relative to content.opf)
   bool cleanCacheOnStart_ = false;
-  String language_;  // Language of the EPUB
+  String language_;      // Language of the EPUB
+  size_t epubFileSize_;  // Size of the EPUB file for cache validation
 };
 
 #endif

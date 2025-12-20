@@ -49,7 +49,7 @@ static File g_extract_file;
 // Metadata filename and current extract version. Update `CURRENT_EXTRACT_VERSION`
 // whenever conversion/extraction format changes to force a cache reset.
 static const char* EXTRACT_META_FILENAME = "epub_meta.txt";
-static const char* CURRENT_EXTRACT_VERSION = "6";
+static const char* CURRENT_EXTRACT_VERSION = "7";
 
 // Callback to write extracted data to SD card file
 static int extract_to_file_callback(const void* data, size_t size, void* user_data) {
@@ -97,6 +97,7 @@ EpubReader::EpubReader(const char* epubPath, bool cleanCacheOnStart)
   size_t fileSize = testFile.size();
   testFile.close();
   Serial.printf("  EPUB file verified, size: %u bytes\n", fileSize);
+  epubFileSize_ = fileSize;
 
   Serial.printf("  Time taken to verify EPUB file:  %lu ms\n", millis() - startTime);
 
@@ -266,12 +267,36 @@ bool EpubReader::checkAndUpdateExtractMeta() {
         else
           ver = contents.substring(pos + 8);
         ver.trim();
-        if (ver == CURRENT_EXTRACT_VERSION) {
+
+        // Parse filesize
+        bool filesizeMatches = false;
+        size_t metaFileSize = 0;
+        int posSize = contents.indexOf("filesize=");
+        if (posSize >= 0) {
+          int eolSize = contents.indexOf('\n', posSize);
+          String szStr;
+          if (eolSize >= 0)
+            szStr = contents.substring(posSize + 9, eolSize);
+          else
+            szStr = contents.substring(posSize + 9);
+          szStr.trim();
+          metaFileSize = (size_t)szStr.toInt();
+          filesizeMatches = (metaFileSize == epubFileSize_);
+        } else {
+          Serial.println("  Extract meta missing 'filesize' entry - clearing cache");
+        }
+
+        if (ver == CURRENT_EXTRACT_VERSION && filesizeMatches) {
           // Meta matches; nothing to do
           return true;
         }
-        Serial.printf("  Extract meta version mismatch: found=%s expected=%s - clearing cache\n", ver.c_str(),
-                      CURRENT_EXTRACT_VERSION);
+        if (ver != CURRENT_EXTRACT_VERSION) {
+          Serial.printf("  Extract meta version mismatch: found=%s expected=%s - clearing cache\n", ver.c_str(),
+                        CURRENT_EXTRACT_VERSION);
+        } else {
+          Serial.printf("  Extract meta filesize mismatch: found=%u expected=%u - clearing cache\n",
+                        (unsigned)metaFileSize, (unsigned)epubFileSize_);
+        }
         // Remove entire extract dir to ensure clean state
         cleanExtractDir();
         // Recreate directory
@@ -306,7 +331,7 @@ bool EpubReader::checkAndUpdateExtractMeta() {
     }
   }
 
-  // Write meta file with current version
+  // Write meta file with current version and filesize
   File out = SD.open(metaPath.c_str(), FILE_WRITE);
   if (!out) {
     Serial.printf("ERROR: Failed to write extract meta file %s\n", metaPath.c_str());
@@ -314,6 +339,9 @@ bool EpubReader::checkAndUpdateExtractMeta() {
   }
   out.print("version=");
   out.print(CURRENT_EXTRACT_VERSION);
+  out.print("\n");
+  out.print("filesize=");
+  out.print(epubFileSize_);
   out.print("\n");
   out.close();
   Serial.printf("  Wrote extract metadata: %s\n", metaPath.c_str());

@@ -862,7 +862,7 @@ bool EpubWordProvider::convertXhtmlStreamToTxt(const char* epubFilename, String&
   if (timings)
     timings->startStream = startStreamingMs;
   if (!epubStream) {
-    Serial.println("ERROR: Failed to start EPUB streaming");
+    Serial.printf("ERROR: Failed to start EPUB streaming for file: %s\n", epubFilename);
     return false;
   }
 
