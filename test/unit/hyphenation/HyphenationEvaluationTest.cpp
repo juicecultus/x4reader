@@ -1,12 +1,14 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "text/hyphenation/EnglishHyphenation.h"
+#include "text/hyphenation/GermanHyphenation.h"
 
 struct TestCase {
   std::string word;
@@ -77,10 +79,11 @@ std::string positionsToHyphenated(const std::string& word, const std::vector<siz
   return result;
 }
 
-EvaluationResult evaluateWord(const TestCase& testCase) {
+EvaluationResult evaluateWord(const TestCase& testCase,
+                              std::function<std::vector<size_t>(const std::string&)> hyphenateFunc) {
   EvaluationResult result;
 
-  std::vector<size_t> actualPositions = EnglishHyphenation::hyphenate(testCase.word);
+  std::vector<size_t> actualPositions = hyphenateFunc(testCase.word);
 
   std::vector<size_t> expected = testCase.expectedPositions;
   std::vector<size_t> actual = actualPositions;
@@ -130,64 +133,18 @@ EvaluationResult evaluateWord(const TestCase& testCase) {
   return result;
 }
 
-int main(int argc, char* argv[]) {
-  std::string testDataFile = "test/resources/english_hyphenation_tests.txt";
-
-  if (argc > 1) {
-    testDataFile = argv[1];
+void printResults(const std::string& language, const std::vector<TestCase>& testCases,
+                  const std::vector<std::pair<TestCase, EvaluationResult>>& worstCases, int perfectMatches,
+                  int partialMatches, int completeMisses, double totalPrecision, double totalRecall, double totalF1,
+                  double totalWeighted, int totalTP, int totalFP, int totalFN,
+                  std::function<std::vector<size_t>(const std::string&)> hyphenateFunc) {
+  std::string lang_upper = language;
+  if (!lang_upper.empty()) {
+    lang_upper[0] = std::toupper(lang_upper[0]);
   }
-  std::cout << "Loading test data from: " << testDataFile << std::endl;
-  std::vector<TestCase> testCases = loadTestData(testDataFile);
-
-  if (testCases.empty()) {
-    std::cerr << "No test cases loaded. Exiting." << std::endl;
-    return 1;
-  }
-
-  std::cout << "Loaded " << testCases.size() << " test cases" << std::endl;
-  std::cout << std::endl;
-
-  int perfectMatches = 0;
-  int partialMatches = 0;
-  int completeMisses = 0;
-
-  double totalPrecision = 0.0;
-  double totalRecall = 0.0;
-  double totalF1 = 0.0;
-  double totalWeighted = 0.0;
-
-  int totalTP = 0, totalFP = 0, totalFN = 0;
-
-  std::vector<std::pair<TestCase, EvaluationResult>> worstCases;
-
-  for (const auto& testCase : testCases) {
-    EvaluationResult result = evaluateWord(testCase);
-
-    totalTP += result.truePositives;
-    totalFP += result.falsePositives;
-    totalFN += result.falseNegatives;
-
-    totalPrecision += result.precision;
-    totalRecall += result.recall;
-    totalF1 += result.f1Score;
-    totalWeighted += result.weightedScore;
-
-    if (result.f1Score == 1.0) {
-      perfectMatches++;
-    } else if (result.f1Score > 0.0) {
-      partialMatches++;
-    } else {
-      completeMisses++;
-    }
-
-    worstCases.push_back({testCase, result});
-  }
-
-  std::sort(worstCases.begin(), worstCases.end(),
-            [](const auto& a, const auto& b) { return a.second.weightedScore < b.second.weightedScore; });
 
   std::cout << "================================================================================" << std::endl;
-  std::cout << "ENGLISH HYPHENATION EVALUATION RESULTS" << std::endl;
+  std::cout << lang_upper << " HYPHENATION EVALUATION RESULTS" << std::endl;
   std::cout << "================================================================================" << std::endl;
   std::cout << std::endl;
 
@@ -223,12 +180,12 @@ int main(int argc, char* argv[]) {
   std::cout << std::endl;
 
   std::cout << "--- Worst Cases (lowest weighted scores) ---" << std::endl;
-  int showCount = std::min(20, static_cast<int>(worstCases.size()));
+  int showCount = std::min(10, static_cast<int>(worstCases.size()));
   for (int i = 0; i < showCount; i++) {
     const auto& testCase = worstCases[i].first;
     const auto& result = worstCases[i].second;
 
-    std::vector<size_t> actualPositions = EnglishHyphenation::hyphenate(testCase.word);
+    std::vector<size_t> actualPositions = hyphenateFunc(testCase.word);
     std::string actualHyphenated = positionsToHyphenated(testCase.word, actualPositions);
 
     std::cout << "Word: " << testCase.word << " (freq: " << testCase.frequency << ")" << std::endl;
@@ -241,6 +198,90 @@ int main(int argc, char* argv[]) {
     std::cout << "  TP: " << result.truePositives << "  FP: " << result.falsePositives
               << "  FN: " << result.falseNegatives << std::endl;
     std::cout << std::endl;
+  }
+}
+
+int main(int argc, char* argv[]) {
+  std::string language = "english";  // default
+
+  if (argc > 1) {
+    language = argv[1];
+  }
+
+  std::vector<std::string> languages;
+  if (language == "all") {
+    languages = {"english", "german"};
+  } else {
+    languages = {language};
+  }
+
+  for (const auto& lang : languages) {
+    std::string testDataFile;
+    std::function<std::vector<size_t>(const std::string&)> hyphenateFunc;
+
+    if (lang == "english") {
+      testDataFile = "test/resources/english_hyphenation_tests.txt";
+      hyphenateFunc = EnglishHyphenation::hyphenate;
+    } else if (lang == "german") {
+      testDataFile = "test/resources/german_hyphenation_tests.txt";
+      hyphenateFunc = GermanHyphenation::hyphenate;
+    } else {
+      std::cerr << "Unknown language: " << lang << std::endl;
+      continue;
+    }
+
+    std::cout << "Loading test data from: " << testDataFile << std::endl;
+    std::vector<TestCase> testCases = loadTestData(testDataFile);
+
+    if (testCases.empty()) {
+      std::cerr << "No test cases loaded for " << lang << ". Skipping." << std::endl;
+      continue;
+    }
+
+    std::cout << "Loaded " << testCases.size() << " test cases for " << lang << std::endl;
+    std::cout << std::endl;
+
+    int perfectMatches = 0;
+    int partialMatches = 0;
+    int completeMisses = 0;
+
+    double totalPrecision = 0.0;
+    double totalRecall = 0.0;
+    double totalF1 = 0.0;
+    double totalWeighted = 0.0;
+
+    int totalTP = 0, totalFP = 0, totalFN = 0;
+
+    std::vector<std::pair<TestCase, EvaluationResult>> worstCases;
+
+    for (const auto& testCase : testCases) {
+      EvaluationResult result = evaluateWord(testCase, hyphenateFunc);
+
+      totalTP += result.truePositives;
+      totalFP += result.falsePositives;
+      totalFN += result.falseNegatives;
+
+      totalPrecision += result.precision;
+      totalRecall += result.recall;
+      totalF1 += result.f1Score;
+      totalWeighted += result.weightedScore;
+
+      if (result.f1Score == 1.0) {
+        perfectMatches++;
+      } else if (result.f1Score > 0.0) {
+        partialMatches++;
+      } else {
+        completeMisses++;
+      }
+
+      worstCases.push_back({testCase, result});
+    }
+
+    std::sort(worstCases.begin(), worstCases.end(),
+              [](const auto& a, const auto& b) { return a.second.weightedScore < b.second.weightedScore; });
+
+    printResults(lang, testCases, worstCases, perfectMatches, partialMatches, completeMisses, totalPrecision,
+                 totalRecall, totalF1, totalWeighted, totalTP, totalFP, totalFN, hyphenateFunc);
   }
 
   return 0;
