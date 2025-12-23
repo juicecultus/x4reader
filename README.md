@@ -16,7 +16,7 @@ A minimal EPUB/TXT reader for ESP32-C3 e-ink devices.
 - [x] EPUB reader
 - [x] File browser for SD card navigation
 - [x] Bold/Italic font support
-- [x] Simple English/German hyphenation
+- [x] Liang English/German hyphenation
 
 ---
 
@@ -71,39 +71,6 @@ test/
 ```
 
 ---
-
-## Running Tests
-
-Tests run on your machine - no hardware required. Uses mocked Arduino APIs.
-
-```powershell
-# Write back the entire flash
-python -m esptool --chip esp32c3 --baud 921600 --port COM5 write_flash 0x0 firmware_backup.bin
-```
-
-**Windows (PowerShell):**
-```powershell
-# Write back only app0 (faster)
-python -m esptool --chip esp32c3 --baud 921600 --port COM5 write_flash 0x10000 app0_backup.bin
-```
-
-### Run a specific test
-```bash
-./test/build/bin/TextLayoutPageRenderTest
-./test/build/bin/WordProviderTest
-./test/build/bin/GermanHyphenationEvaluationTest
-```
-
-### Available tests
-
-| Test | What it validates |
-|------|-------------------|
-| `WordProviderTest` | Text tokenization, forward/backward navigation |
-| `TextLayoutPageRenderTest` | Page layout, pagination |
-| `GreedyLayoutBidirectionalParagraphTest` | Line breaking algorithm |
-| `GermanHyphenationEvaluationTest` | Hyphenation rules |
-| `SimpleXmlParserTest` | XML parsing |
-| `EpubReaderTest` | EPUB file reading |
 
 ---
 
