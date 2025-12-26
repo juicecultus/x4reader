@@ -46,6 +46,9 @@ class TextViewerScreen : public Screen {
   SDCardManager& sdManager;
   UIManager& uiManager;
 
+  uint32_t pageRenderCounter = 0;
+  static constexpr uint32_t kConditionEvery = 8;
+
   WordProvider* provider = nullptr;
   // Keep the loaded text alive for the lifetime of the provider
   String loadedText;

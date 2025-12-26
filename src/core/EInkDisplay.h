@@ -5,8 +5,10 @@
 #include <Arduino.h>
 #include <SPI.h>
 #else
-#include "../test/mocks/platform_stubs.h"
+#include "../../test/mocks/platform_stubs.h"
 #endif
+
+class BBEPAPER;
 
 class EInkDisplay {
  public:
@@ -48,6 +50,8 @@ class EInkDisplay {
 
   void refreshDisplay(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
 
+  bool supportsGrayscale() const;
+
   // debug function
   void grayscaleRevert();
 
@@ -79,6 +83,10 @@ class EInkDisplay {
   // SPI settings
   SPISettings spiSettings;
 
+  SPISettings bbepSpiSettings;
+
+  BBEPAPER* bbep;
+
   // State
   bool isScreenOn;
   bool customLutActive;
@@ -96,6 +104,9 @@ class EInkDisplay {
   // Low-level display operations
   void setRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   void writeRamBuffer(uint8_t ramBuffer, const uint8_t* data, uint32_t size);
+
+  void bbepBeginTransaction();
+  void bbepEndTransaction();
 };
 
 #endif

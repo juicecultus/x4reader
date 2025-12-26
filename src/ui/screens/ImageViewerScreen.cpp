@@ -33,15 +33,19 @@ void ImageViewerScreen::show() {
       Serial.printf("[%lu] ImageViewer: IMAGE 0\n", millis());
       display.setFramebuffer(test_image);
       display.displayBuffer(EInkDisplay::FAST_REFRESH);
-      display.copyGrayscaleBuffers(test_image_lsb, test_image_msb);
-      display.displayGrayBuffer();
+      if (display.supportsGrayscale()) {
+        display.copyGrayscaleBuffers(test_image_lsb, test_image_msb);
+        display.displayGrayBuffer();
+      }
       break;
     case 1:
       Serial.printf("[%lu] ImageViewer: IMAGE 1\n", millis());
       display.setFramebuffer(bebop_image);
       display.displayBuffer(EInkDisplay::FAST_REFRESH);
-      display.copyGrayscaleBuffers(bebop_image_lsb, bebop_image_msb);
-      display.displayGrayBuffer();
+      if (display.supportsGrayscale()) {
+        display.copyGrayscaleBuffers(bebop_image_lsb, bebop_image_msb);
+        display.displayGrayBuffer();
+      }
       break;
     case 2:
       Serial.printf("[%lu] ImageViewer: WHITE\n", millis());

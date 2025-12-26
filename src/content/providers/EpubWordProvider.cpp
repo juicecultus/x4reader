@@ -4,7 +4,6 @@
 #include <SD.h>
 #include <ctype.h>
 
-#include <cmath>  // for std::round
 #include <vector>
 
 // #define EPUB_DEBUG_CLEAN_CACHE
@@ -304,7 +303,10 @@ void EpubWordProvider::writeParagraphStyleToken(String& writeBuffer, const Strin
     // clamped to [0, 12]. This maps typical indents to visible space counts while
     // avoiding huge or tiny counts.
     if (combined.hasTextIndent && combined.textIndent > 0.0f) {
-      int spaces = (int)std::round(combined.textIndent / 4.0f);
+      // Avoid libm (roundf) on ESP32-C3: it has previously triggered illegal
+      // instruction faults in this project. We only need integer rounding.
+      const float scaled = combined.textIndent / 4.0f;
+      int spaces = (int)(scaled + 0.5f);
       if (spaces < 0)
         spaces = 0;
       if (spaces > 12)

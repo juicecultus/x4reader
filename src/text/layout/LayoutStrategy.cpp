@@ -217,7 +217,10 @@ int LayoutStrategy::getPreviousPageStart(WordProvider& provider, TextRenderer& r
 
   // Calculate how many lines fit on the screen
   const int16_t availableHeight = config.pageHeight - config.marginTop - config.marginBottom;
-  const int maxLines = ceil(availableHeight / (double)config.lineHeight);
+  // Avoid libm ceil() on ESP32-C3 (has caused illegal instruction panics).
+  // We only need integer ceil-division.
+  const int lineHeight = (config.lineHeight > 0) ? config.lineHeight : 1;
+  const int maxLines = (availableHeight + lineHeight - 1) / lineHeight;
 
   // Go backwards more than one page to the end of the paragraph and then move forward to find the start
   provider.setPosition(currentStartPosition);

@@ -271,31 +271,36 @@ void TextViewerScreen::showPage() {
   }
 
   // display bw parts
-  display.displayBuffer(EInkDisplay::FAST_REFRESH);
+  const bool doCondition = (kConditionEvery > 0) && (pageRenderCounter > 0) && ((pageRenderCounter % kConditionEvery) == 0);
+  display.displayBuffer(doCondition ? EInkDisplay::FULL_REFRESH : EInkDisplay::FAST_REFRESH);
 
-  // grayscale rendering
-  {
-    textRenderer.setTextColor(TextRenderer::COLOR_BLACK);
-    textRenderer.setFontFamily(getCurrentFontFamily());
-    textRenderer.setFontStyle(FontStyle::REGULAR);
+  if (!doCondition && display.supportsGrayscale()) {
+    // grayscale rendering
+    {
+      textRenderer.setTextColor(TextRenderer::COLOR_BLACK);
+      textRenderer.setFontFamily(getCurrentFontFamily());
+      textRenderer.setFontStyle(FontStyle::REGULAR);
 
-    // Render and copy to LSB buffer
-    display.clearScreen(0x00);
-    textRenderer.setFrameBuffer(display.getFrameBuffer());
-    textRenderer.setBitmapType(TextRenderer::BITMAP_GRAY_LSB);
-    layoutStrategy->renderPage(layout, textRenderer, layoutConfig);
-    display.copyGrayscaleLsbBuffers(display.getFrameBuffer());
+      // Render and copy to LSB buffer
+      display.clearScreen(0xFF);
+      textRenderer.setFrameBuffer(display.getFrameBuffer());
+      textRenderer.setBitmapType(TextRenderer::BITMAP_GRAY_LSB);
+      layoutStrategy->renderPage(layout, textRenderer, layoutConfig);
+      display.copyGrayscaleLsbBuffers(display.getFrameBuffer());
 
-    // Render and copy to MSB buffer
-    display.clearScreen(0x00);
-    textRenderer.setFrameBuffer(display.getFrameBuffer());
-    textRenderer.setBitmapType(TextRenderer::BITMAP_GRAY_MSB);
-    layoutStrategy->renderPage(layout, textRenderer, layoutConfig);
-    display.copyGrayscaleMsbBuffers(display.getFrameBuffer());
+      // Render and copy to MSB buffer
+      display.clearScreen(0xFF);
+      textRenderer.setFrameBuffer(display.getFrameBuffer());
+      textRenderer.setBitmapType(TextRenderer::BITMAP_GRAY_MSB);
+      layoutStrategy->renderPage(layout, textRenderer, layoutConfig);
+      display.copyGrayscaleMsbBuffers(display.getFrameBuffer());
 
-    // display grayscale part
-    display.displayGrayBuffer();
+      // display grayscale part
+      display.displayGrayBuffer();
+    }
   }
+
+  pageRenderCounter++;
 }
 
 void TextViewerScreen::nextPage() {
@@ -417,6 +422,7 @@ void TextViewerScreen::loadTextFromString(const String& content) {
   // stable storage for its internal copy/operations.
   delete provider;
   loadedText = content;
+  pageRenderCounter = 0;
   if (loadedText.length() > 0) {
     provider = new StringWordProvider(loadedText);
   } else {
@@ -443,6 +449,7 @@ void TextViewerScreen::openFile(const String& sdPath) {
   delete provider;
   provider = nullptr;
   currentFilePath = sdPath;
+  pageRenderCounter = 0;
 
   // Load the saved position from SD if present
   loadPositionFromFile();
