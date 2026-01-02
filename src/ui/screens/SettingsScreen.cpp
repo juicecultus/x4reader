@@ -21,11 +21,7 @@ void SettingsScreen::handleButtons(Buttons& buttons) {
   if (buttons.isPressed(Buttons::BACK)) {
     saveSettings();
     // Return to the screen we came from
-    if (previousScreenId == 2) {
-      uiManager.showScreen(UIManager::ScreenId::TextViewer);
-    } else {
-      uiManager.showScreen(UIManager::ScreenId::FileBrowser);
-    }
+    uiManager.showScreen(uiManager.getPreviousScreen());
   } else if (buttons.isPressed(Buttons::LEFT)) {
     selectNext();
   } else if (buttons.isPressed(Buttons::RIGHT)) {
@@ -37,11 +33,6 @@ void SettingsScreen::handleButtons(Buttons& buttons) {
 
 void SettingsScreen::activate() {
   loadSettings();
-  // Store which screen we came from by checking the current screen in UIManager
-  // We'll assume FileBrowser (0) by default, or TextViewer (2) if a file is open
-  Settings& s = uiManager.getSettings();
-  String lastPath = s.getString(String("textviewer.lastPath"), String(""));
-  previousScreenId = (lastPath.length() > 0) ? 2 : 0;  // 2 = TextViewer, 0 = FileBrowser
 }
 
 void SettingsScreen::show() {

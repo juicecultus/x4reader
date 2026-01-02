@@ -23,9 +23,6 @@ class SettingsScreen : public Screen {
   TextRenderer& textRenderer;
   UIManager& uiManager;
 
-  // Track which screen we came from
-  int previousScreenId = 0;  // 0 = FileBrowser, 2 = TextViewer
-
   // Menu navigation
   int selectedIndex = 0;
   static constexpr int SETTINGS_COUNT = 4;

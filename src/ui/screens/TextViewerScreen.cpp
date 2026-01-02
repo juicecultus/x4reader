@@ -15,6 +15,7 @@
 #include "../../text/hyphenation/HyphenationStrategy.h"
 #include "../../text/layout/GreedyLayoutStrategy.h"
 #include "../../text/layout/KnuthPlassLayoutStrategy.h"
+#include "SettingsScreen.h"
 
 TextViewerScreen::TextViewerScreen(EInkDisplay& display, TextRenderer& renderer, SDCardManager& sdManager,
                                    UIManager& uiManager)
