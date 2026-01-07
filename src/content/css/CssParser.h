@@ -41,10 +41,16 @@ class CssParser {
   const CssStyle* getStyleForClass(const String& className) const;
 
   /**
+   * Get the combined style for a single tag
+   * Styles are merged in order, later classes override earlier ones
+   */
+  CssStyle getTagStyle(const String& tagName) const;
+
+  /**
    * Get the combined style for multiple class names (space-separated)
    * Styles are merged in order, later classes override earlier ones
    */
-  CssStyle getCombinedStyle(const String& classNames) const;
+  CssStyle getCombinedStyle(const String& tagName, const String& classNames) const;
 
   /**
    * Parse an inline style attribute (e.g., "text-align: center; color: red;")
@@ -81,13 +87,19 @@ class CssParser {
   void parseProperty(const String& name, const String& value, CssStyle& style);
 
   // Parse text-align value
-  TextAlign parseTextAlign(const String& value);
+  TextAlign parseTextAlign(const String& value) const;
 
   // Parse font-style value
-  CssFontStyle parseFontStyle(const String& value);
+  CssFontStyle parseFontStyle(const String& value) const;
 
   // Parse font-weight value
-  CssFontWeight parseFontWeight(const String& value);
+  CssFontWeight parseFontWeight(const String& value) const;
+
+  // Parse text-indent value
+  float parseTextIndent(const String& value) const;
+
+  // Parse margin-* value
+  int parseMargin(const String& value) const;
 
   // Extract class name from a selector (e.g., ".foo" or "p.foo" -> "foo")
   String extractClassName(const String& selector);

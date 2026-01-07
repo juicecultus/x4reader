@@ -59,6 +59,12 @@ struct CssStyle {
   float textIndent = 0.0f;
   bool hasTextIndent = false;
 
+  int marginTop = 0;
+  bool hasMarginTop = false;
+
+  int marginBottom = 0;
+  bool hasMarginBottom = false;
+
   // Merge another style into this one (other style takes precedence)
   void merge(const CssStyle& other) {
     if (other.hasTextAlign) {
@@ -77,6 +83,14 @@ struct CssStyle {
       textIndent = other.textIndent;
       hasTextIndent = true;
     }
+    if (other.hasMarginTop) {
+      marginTop = other.marginTop;
+      hasMarginTop = true;
+    }
+    if (other.hasMarginBottom) {
+      marginBottom = other.marginBottom;
+      hasMarginBottom = true;
+    }
   }
 
   // Reset to default values
@@ -87,6 +101,10 @@ struct CssStyle {
     hasFontStyle = false;
     fontWeight = CssFontWeight::Normal;
     hasFontWeight = false;
+    textIndent = 0.0f;
+    hasTextIndent = false;
+    hasMarginTop = false;
+    hasMarginBottom = false;
   }
 };
 

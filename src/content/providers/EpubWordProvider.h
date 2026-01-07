@@ -111,7 +111,7 @@ class EpubWordProvider : public WordProvider {
   void performXhtmlToTxtConversion(SimpleXmlParser& parser, File& out, size_t* outBytes = nullptr);
 
   // Emit style properties for a paragraph's classes and inline styles as an escaped token written to buffer
-  void writeParagraphStyleToken(String& writeBuffer, const String& pendingParagraphClasses,
+  void writeParagraphStyleToken(String& writeBuffer, String& name, const String& pendingParagraphClasses,
                                 const String& pendingInlineStyle, bool& paragraphClassesWritten,
                                 std::vector<char>& paragraphStyleEmitted);
 
