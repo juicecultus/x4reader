@@ -203,7 +203,18 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
             else if (gray > 255) gray = 255;
 
             uint8_t color = (gray < 128) ? 0 : 1;
-            ctx->bbep->drawPixel(targetX, targetY, color);
+            
+            if (ctx->frameBuffer) {
+                int byteIdx = (targetY * 100) + (targetX / 8);
+                int bitIdx = 7 - (targetX % 8);
+                if (color == 0) {
+                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+                } else {
+                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+                }
+            } else {
+                ctx->bbep->drawPixel(targetX, targetY, color);
+            }
 
             int16_t err = gray - (color ? 255 : 0);
             if (targetX + 1 < 800) curErr[targetX + 1] += (err * 7) / 16;
@@ -259,7 +270,18 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
         else if (gray > 255) gray = 255;
 
         uint8_t color = (gray < 128) ? 0 : 1;
-        ctx->bbep->drawPixel(targetX, targetY, color);
+        
+        if (ctx->frameBuffer) {
+            int byteIdx = (targetY * 100) + (targetX / 8);
+            int bitIdx = 7 - (targetX % 8);
+            if (color == 0) {
+                ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+            } else {
+                ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+            }
+        } else {
+            ctx->bbep->drawPixel(targetX, targetY, color);
+        }
 
         int16_t err = gray - (color ? 255 : 0);
         if (targetX + 1 < 800) curErr[targetX + 1] += (err * 7) / 16;
@@ -267,7 +289,6 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
             if (targetX > 0) nxtErr[targetX - 1] += (err * 3) / 16;
             nxtErr[targetX] += (err * 5) / 16;
             if (targetX + 1 < 800) nxtErr[targetX + 1] += (err * 1) / 16;
-            ctx->bbep->drawPixel(targetX, targetY, (lum < 128) ? 0 : 1);
         }
     }
     free(usPixels);
