@@ -354,7 +354,6 @@ void CssParser::parseProperty(const String& name, const String& value, CssStyle&
       if (!parsed)
         indentVal = 0.0f;
     }
-    }
     style.textIndent = indentVal;
     style.hasTextIndent = (indentVal > 0);
   }

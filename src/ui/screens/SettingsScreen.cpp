@@ -154,6 +154,9 @@ void SettingsScreen::toggleCurrentSetting() {
       uiFontSizeIndex = 1 - uiFontSizeIndex;
       applyUIFontSettings();
       break;
+    case 7:  // Random Sleep Cover
+      randomSleepCoverIndex = 1 - randomSleepCoverIndex;
+      break;
   }
   saveSettings();
   show();
@@ -214,6 +217,12 @@ void SettingsScreen::loadSettings() {
     uiFontSizeIndex = uiFontSize;
   }
 
+  // Load random sleep cover (0=OFF, 1=ON)
+  int randomSleepCover = 0;
+  if (s.getInt(String("settings.randomSleepCover"), randomSleepCover)) {
+    randomSleepCoverIndex = randomSleepCover;
+  }
+
   // Apply the loaded font settings
   applyFontSettings();
   applyUIFontSettings();
@@ -229,6 +238,7 @@ void SettingsScreen::saveSettings() {
   s.setInt(String("settings.fontFamily"), fontFamilyIndex);
   s.setInt(String("settings.fontSize"), fontSizeIndex);
   s.setInt(String("settings.uiFontSize"), uiFontSizeIndex);
+  s.setInt(String("settings.randomSleepCover"), randomSleepCoverIndex);
 
   if (!s.save()) {
     Serial.println("SettingsScreen: Failed to write settings.cfg");
@@ -251,6 +261,8 @@ String SettingsScreen::getSettingName(int index) {
       return "Font Size";
     case 6:
       return "UI Font Size";
+    case 7:
+      return "Random Sleep Cover";
     default:
       return "";
   }
@@ -297,6 +309,8 @@ String SettingsScreen::getSettingValue(int index) {
       }
     case 6:
       return uiFontSizeIndex ? "Large" : "Small";
+    case 7:
+      return randomSleepCoverIndex ? "On" : "Off";
     default:
       return "";
   }
