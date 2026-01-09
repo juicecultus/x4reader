@@ -132,9 +132,12 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     
     if (!ctx->bbep || !ctx->errorBuf) return 0;
 
+    // Boundary check for tile coordinates
+    if (pDraw->x < 0 || pDraw->y < 0) return 1;
+
     for (int y = 0; y < pDraw->iHeight; y++) {
         int targetY = pDraw->y + y;
-        if (targetY < 0 || targetY >= ctx->targetHeight) continue;
+        if (targetY >= ctx->targetHeight) break;
 
         // Current and next error row pointers
         int16_t* curErr = &ctx->errorBuf[(targetY % 2) * ctx->targetWidth];
@@ -147,8 +150,9 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
 
         for (int x = 0; x < pDraw->iWidth; x++) {
             int targetX = pDraw->x + x;
-            if (targetX < 0 || targetX >= ctx->targetWidth) continue;
+            if (targetX >= ctx->targetWidth) break;
 
+            if (!pDraw->pPixels) return 0; // Extreme safety
             uint16_t pixel = pDraw->pPixels[y * pDraw->iWidth + x];
             uint8_t r = (pixel >> 11) & 0x1F; 
             uint8_t g = (pixel >> 5) & 0x3F;  
