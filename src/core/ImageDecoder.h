@@ -10,11 +10,12 @@
 #undef INTELSHORT
 #undef INTELLONG
 #include <PNGdec.h>
+#include <bb_epaper.h>
 
 class ImageDecoder {
 public:
     struct DecodeContext {
-        uint8_t* outBuffer;
+        BBEPAPER* bbep;
         uint16_t targetWidth;
         uint16_t targetHeight;
         int16_t offsetX;
@@ -22,15 +23,15 @@ public:
         bool success;
     };
     /**
-     * @brief Decodes a JPEG or PNG file from SD card into a 1-bit BW buffer.
+     * @brief Decodes a JPEG or PNG file from SD card using BBEPAPER driver.
      * 
      * @param path Path to the image file on SD card.
-     * @param outBuffer Buffer to store the decoded 1-bit data (must be at least 800x480/8 bytes).
+     * @param bbep Pointer to BBEPAPER driver instance.
      * @param targetWidth Target width (800 for current display).
      * @param targetHeight Target height (480 for current display).
      * @return true if decoding was successful.
      */
-    static bool decodeToBW(const char* path, uint8_t* outBuffer, uint16_t targetWidth, uint16_t targetHeight);
+    static bool decodeToDisplay(const char* path, BBEPAPER* bbep, uint16_t targetWidth, uint16_t targetHeight);
 
 private:
     static PNG* currentPNG;

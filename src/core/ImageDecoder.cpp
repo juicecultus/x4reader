@@ -3,21 +3,18 @@
 static ImageDecoder::DecodeContext* g_ctx = nullptr;
 PNG* ImageDecoder::currentPNG = nullptr;
 
-bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint16_t targetWidth, uint16_t targetHeight) {
     String p = String(path);
     p.toLowerCase();
 
     DecodeContext ctx;
-    ctx.outBuffer = outBuffer;
+    ctx.bbep = bbep;
     ctx.targetWidth = targetWidth;
     ctx.targetHeight = targetHeight;
     ctx.offsetX = 0;
     ctx.offsetY = 0;
     ctx.success = false;
     g_ctx = &ctx;
-
-    // Initialize buffer to white (0xFF)
-    memset(outBuffer, 0xFF, (targetWidth * targetHeight) / 8);
 
     if (p.endsWith(".jpg") || p.endsWith(".jpeg")) {
         JPEGDEC jpeg;
@@ -42,7 +39,6 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
             int iw = jpeg.getWidth();
             int ih = jpeg.getHeight();
 
-            // Determine scaling factor (JPEGDEC supports 1/2, 1/4, 1/8)
             if (iw > targetWidth * 4 || ih > targetHeight * 4) {
                 scale = JPEG_SCALE_EIGHTH;
                 iw >>= 3; ih >>= 3;
@@ -54,7 +50,6 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
                 iw >>= 1; ih >>= 1;
             }
 
-            // Calculate centering offsets
             ctx.offsetX = (targetWidth - iw) / 2;
             ctx.offsetY = (targetHeight - ih) / 2;
             
@@ -101,7 +96,6 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
         });
         
         if (rc == PNG_SUCCESS) {
-            // PNGdec doesn't have built-in scaling, so it will be drawn top-left or cropped
             ctx.offsetX = (targetWidth - png.getWidth()) / 2;
             ctx.offsetY = (targetHeight - png.getHeight()) / 2;
             
@@ -115,7 +109,6 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
         currentPNG = nullptr;
     }
 
-
     g_ctx = nullptr;
     return ctx.success;
 }
@@ -123,37 +116,25 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
 int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     DecodeContext *ctx = (DecodeContext *)pDraw->pUser;
     
-    const int destStride = (ctx->targetWidth + 7) / 8;
-    // Serial.printf("JPEGDraw: x=%d, y=%d, w=%d, h=%d, destStride=%d\n", pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, destStride);
-
     for (int y = 0; y < pDraw->iHeight; y++) {
         int targetY = pDraw->y + y;
-        if (targetY >= ctx->targetHeight) break;
+        if (targetY < 0 || targetY >= ctx->targetHeight) continue;
 
         for (int x = 0; x < pDraw->iWidth; x++) {
             int targetX = pDraw->x + x;
-            if (targetX >= ctx->targetWidth) break;
+            if (targetX < 0 || targetX >= ctx->targetWidth) continue;
 
             uint16_t pixel = pDraw->pPixels[y * pDraw->iWidth + x];
             
-            // Extract RGB565 components
             uint8_t r = (pixel >> 11) & 0x1F; 
             uint8_t g = (pixel >> 5) & 0x3F;  
             uint8_t b = pixel & 0x1F;         
             
-            // Standard Luminance: 0.299R + 0.587G + 0.114B (scaled to 0-255)
             float lum = (r * 8.22f * 0.299f) + (g * 4.04f * 0.587f) + (b * 8.22f * 0.114f);
             
-            int byteIdx = (targetY * destStride) + (targetX / 8);
-            int bitIdx = 7 - (targetX % 8);
-            
-            if (lum < 128) {
-                // Black pixel (0 in E-Ink/SSD1677 based on EInkDisplay.cpp)
-                ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
-            } else {
-                // White pixel (1 in E-Ink/SSD1677 based on EInkDisplay.cpp)
-                ctx->outBuffer[byteIdx] |= (1 << bitIdx);
-            }
+            // bb_epaper: 0 = black, 1 = white
+            uint8_t color = (lum < 128) ? 0 : 1;
+            ctx->bbep->drawPixel(targetX, targetY, color);
         }
     }
     return 1;
@@ -166,8 +147,6 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
     if (!currentPNG) return;
     
     currentPNG->getLineAsRGB565(pDraw, usPixels, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
-
-    const int destStride = (ctx->targetWidth + 7) / 8;
 
     int targetY = pDraw->y + ctx->offsetY;
     if (targetY < 0 || targetY >= ctx->targetHeight) return;
@@ -183,16 +162,8 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
         
         float lum = (r * 8.22f * 0.299f) + (g * 4.04f * 0.587f) + (b * 8.22f * 0.114f);
 
-        int byteIdx = (targetY * destStride) + (targetX / 8);
-        int bitIdx = 7 - (targetX % 8);
-
-        if (lum < 128) {
-            // Black pixel (0 in E-Ink/SSD1677)
-            ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
-        } else {
-            // White pixel (1 in E-Ink/SSD1677)
-            ctx->outBuffer[byteIdx] |= (1 << bitIdx);
-        }
+        uint8_t color = (lum < 128) ? 0 : 1;
+        ctx->bbep->drawPixel(targetX, targetY, color);
     }
 }
 

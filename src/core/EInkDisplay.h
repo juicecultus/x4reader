@@ -66,6 +66,10 @@ class EInkDisplay {
     return frameBuffer;
   }
 
+  BBEPAPER* getBBEPAPER() {
+    return bbep;
+  }
+
   // Save the current framebuffer to a PBM file (desktop/test builds only)
   void saveFrameBufferAsPBM(const char* filename);
 

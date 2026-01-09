@@ -112,7 +112,7 @@ void UIManager::showSleepScreen() {
       String selected = String("/images/") + images[idx];
       Serial.printf("Selecting random sleep cover: %s\n", selected.c_str());
       
-      if (ImageDecoder::decodeToBW(selected.c_str(), display.getFrameBuffer(), EInkDisplay::DISPLAY_WIDTH, EInkDisplay::DISPLAY_HEIGHT)) {
+      if (ImageDecoder::decodeToDisplay(selected.c_str(), display.getBBEPAPER(), EInkDisplay::DISPLAY_WIDTH, EInkDisplay::DISPLAY_HEIGHT)) {
         usedRandomCover = true;
       } else {
         Serial.println("Failed to decode random sleep cover");
