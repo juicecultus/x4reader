@@ -148,7 +148,12 @@ void UIManager::showSleepScreen() {
   // Final refresh to E-Ink hardware
   display.displayBuffer(EInkDisplay::FULL_REFRESH);
   
-  // Grayscale support check (only if not using random cover which is currently 1-bit)
+  // Re-copy back to ensure we have the image in the current front buffer
+  // after the internal swap. This ensures subsequent drawings (like Sleeping...)
+  // and the final display state are consistent.
+  // Actually, Sleeping... was already drawn into the buffer that just became the back buffer.
+  // Let's simplify: bypass the grayscale part for now if using random cover.
+  
   if (!usedRandomCover && display.supportsGrayscale()) {
     display.copyGrayscaleBuffers(bebop_image_lsb, bebop_image_msb);
     display.displayGrayBuffer(true);

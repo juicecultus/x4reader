@@ -32,6 +32,7 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         }
         File f = SD.open(path);
         if (!f) {
+            Serial.printf("ImageDecoder: Failed to open %s\n", path);
             delete jpeg;
             delete ctx;
             g_ctx = nullptr;
@@ -43,7 +44,6 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
                        [](JPEGFILE *pfn, uint8_t *pBuf, int32_t iLen) -> int32_t {
                            if (!pfn || !pfn->fHandle) return -1;
                            File *file = (File *)pfn->fHandle;
-                           // Use direct read to avoid wrapper overhead
                            return (int32_t)file->read(pBuf, (size_t)iLen);
                        },
                        [](JPEGFILE *pfn, int32_t iPos) -> int32_t {
@@ -74,13 +74,20 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
             ctx->offsetX = (targetWidth - iw) / 2;
             ctx->offsetY = (targetHeight - ih) / 2;
             
-            // Limit output size to prevent internal buffer overflow
             jpeg->setMaxOutputSize(1); 
+
+            Serial.printf("ImageDecoder: Decoding JPEG %dx%d to display at offset %d,%d scale %d\n", 
+                          jpeg->getWidth(), jpeg->getHeight(), ctx->offsetX, ctx->offsetY, scale);
 
             if (jpeg->decode(ctx->offsetX, ctx->offsetY, scale)) {
                 ctx->success = true;
+                Serial.println("ImageDecoder: JPEG decode successful");
+            } else {
+                Serial.printf("ImageDecoder: JPEG decode failed, error %d\n", jpeg->getLastError());
             }
             jpeg->close();
+        } else {
+            Serial.printf("ImageDecoder: JPEG open failed, error %d\n", jpeg->getLastError());
         }
         f.close();
         delete jpeg;
@@ -94,6 +101,7 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         currentPNG = png;
         File f = SD.open(path);
         if (!f) {
+            Serial.printf("ImageDecoder: Failed to open %s\n", path);
             currentPNG = nullptr;
             delete png;
             delete ctx;
@@ -132,11 +140,19 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
             ctx->offsetX = (targetWidth - png->getWidth()) / 2;
             ctx->offsetY = (targetHeight - png->getHeight()) / 2;
             
+            Serial.printf("ImageDecoder: Decoding PNG %dx%d to display at offset %d,%d\n", 
+                          png->getWidth(), png->getHeight(), ctx->offsetX, ctx->offsetY);
+
             rc = png->decode(ctx, 0);
             if (rc == PNG_SUCCESS) {
                 ctx->success = true;
+                Serial.println("ImageDecoder: PNG decode successful");
+            } else {
+                Serial.printf("ImageDecoder: PNG decode failed, error %d\n", png->getLastError());
             }
             png->close();
+        } else {
+            Serial.printf("ImageDecoder: PNG open failed, error %d\n", png->getLastError());
         }
         f.close();
         currentPNG = nullptr;
