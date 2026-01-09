@@ -130,11 +130,11 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
             int bitIdx = 7 - (targetX % 8);
             
             if (lum < 128) {
-                // Black pixel (0 in E-Ink)
-                ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
-            } else {
-                // White pixel (1 in E-Ink)
+                // Black pixel (1 in E-Ink/SSD1677)
                 ctx->outBuffer[byteIdx] |= (1 << bitIdx);
+            } else {
+                // White pixel (0 in E-Ink/SSD1677)
+                ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
             }
         }
     }
@@ -170,11 +170,11 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
         int bitIdx = 7 - (targetX % 8);
 
         if (lum < 128) {
-            // Black pixel (0 in E-Ink)
-            ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
-        } else {
-            // White pixel (1 in E-Ink)
+            // Black pixel (1 in E-Ink/SSD1677)
             ctx->outBuffer[byteIdx] |= (1 << bitIdx);
+        } else {
+            // White pixel (0 in E-Ink/SSD1677)
+            ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
         }
     }
 }
