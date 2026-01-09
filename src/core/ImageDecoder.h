@@ -17,6 +17,8 @@ public:
         uint8_t* outBuffer;
         uint16_t targetWidth;
         uint16_t targetHeight;
+        int16_t offsetX;
+        int16_t offsetY;
         bool success;
     };
     /**

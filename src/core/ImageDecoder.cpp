@@ -11,6 +11,8 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
     ctx.outBuffer = outBuffer;
     ctx.targetWidth = targetWidth;
     ctx.targetHeight = targetHeight;
+    ctx.offsetX = 0;
+    ctx.offsetY = 0;
     ctx.success = false;
     g_ctx = &ctx;
 
@@ -22,7 +24,7 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
         File f = SD.open(path);
         if (!f) return false;
 
-        // Use the simpler open() with callbacks to avoid linkage issues with File-based open
+        // Use manual callback-based open to avoid linkage issues with File-based open
         int rc = jpeg.open((void *)&f, (int)f.size(), [](void *p) { /* close */ }, 
                        [](JPEGFILE *pfn, uint8_t *pBuf, int32_t iLen) -> int32_t {
                            if (!pfn->fHandle) return -1;
@@ -35,16 +37,28 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
 
         if (rc) {
             jpeg.setUserPointer(&ctx);
-            // We want to fit the image to the screen
-            int scale = 0;
-            if (jpeg.getWidth() > targetWidth || jpeg.getHeight() > targetHeight) {
-                // Simplified scaling (JPEGDEC supports 1/2, 1/4, 1/8)
-                if (jpeg.getWidth() > targetWidth * 4) scale = JPEG_SCALE_EIGHTH;
-                else if (jpeg.getWidth() > targetWidth * 2) scale = JPEG_SCALE_QUARTER;
-                else scale = JPEG_SCALE_HALF;
-            }
             
-            if (jpeg.decode(0, 0, scale)) {
+            int scale = 0;
+            int iw = jpeg.getWidth();
+            int ih = jpeg.getHeight();
+
+            // Determine scaling factor (JPEGDEC supports 1/2, 1/4, 1/8)
+            if (iw > targetWidth * 4 || ih > targetHeight * 4) {
+                scale = JPEG_SCALE_EIGHTH;
+                iw >>= 3; ih >>= 3;
+            } else if (iw > targetWidth * 2 || ih > targetHeight * 2) {
+                scale = JPEG_SCALE_QUARTER;
+                iw >>= 2; ih >>= 2;
+            } else if (iw > targetWidth || ih > targetHeight) {
+                scale = JPEG_SCALE_HALF;
+                iw >>= 1; ih >>= 1;
+            }
+
+            // Calculate centering offsets
+            ctx.offsetX = (targetWidth - iw) / 2;
+            ctx.offsetY = (targetHeight - ih) / 2;
+            
+            if (jpeg.decode(ctx.offsetX, ctx.offsetY, scale)) {
                 ctx.success = true;
             }
             jpeg.close();
@@ -87,6 +101,10 @@ bool ImageDecoder::decodeToBW(const char* path, uint8_t* outBuffer, uint16_t tar
         });
         
         if (rc == PNG_SUCCESS) {
+            // PNGdec doesn't have built-in scaling, so it will be drawn top-left or cropped
+            ctx.offsetX = (targetWidth - png.getWidth()) / 2;
+            ctx.offsetY = (targetHeight - png.getHeight()) / 2;
+            
             rc = png.decode(&ctx, 0);
             if (rc == PNG_SUCCESS) {
                 ctx.success = true;
@@ -106,7 +124,7 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     DecodeContext *ctx = (DecodeContext *)pDraw->pUser;
     
     const int destStride = (ctx->targetWidth + 7) / 8;
-    Serial.printf("JPEGDraw: x=%d, y=%d, w=%d, h=%d, destStride=%d\n", pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, destStride);
+    // Serial.printf("JPEGDraw: x=%d, y=%d, w=%d, h=%d, destStride=%d\n", pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight, destStride);
 
     for (int y = 0; y < pDraw->iHeight; y++) {
         int targetY = pDraw->y + y;
@@ -130,11 +148,11 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
             int bitIdx = 7 - (targetX % 8);
             
             if (lum < 128) {
-                // Black pixel (1 in E-Ink/SSD1677)
-                ctx->outBuffer[byteIdx] |= (1 << bitIdx);
-            } else {
-                // White pixel (0 in E-Ink/SSD1677)
+                // Black pixel (0 in E-Ink/SSD1677 based on EInkDisplay.cpp)
                 ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
+            } else {
+                // White pixel (1 in E-Ink/SSD1677 based on EInkDisplay.cpp)
+                ctx->outBuffer[byteIdx] |= (1 << bitIdx);
             }
         }
     }
@@ -150,14 +168,13 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
     currentPNG->getLineAsRGB565(pDraw, usPixels, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
 
     const int destStride = (ctx->targetWidth + 7) / 8;
-    // Serial.printf("PNGDraw: y=%d, w=%d, destStride=%d\n", pDraw->y, pDraw->iWidth, destStride);
 
-    int targetY = pDraw->y;
-    if (targetY >= ctx->targetHeight) return;
+    int targetY = pDraw->y + ctx->offsetY;
+    if (targetY < 0 || targetY >= ctx->targetHeight) return;
 
     for (int x = 0; x < pDraw->iWidth; x++) {
-        int targetX = x;
-        if (targetX >= ctx->targetWidth) break;
+        int targetX = x + ctx->offsetX;
+        if (targetX < 0 || targetX >= ctx->targetWidth) continue;
 
         uint16_t pixel = usPixels[x];
         uint8_t r = (pixel >> 11) & 0x1F; 
@@ -170,11 +187,11 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
         int bitIdx = 7 - (targetX % 8);
 
         if (lum < 128) {
-            // Black pixel (1 in E-Ink/SSD1677)
-            ctx->outBuffer[byteIdx] |= (1 << bitIdx);
-        } else {
-            // White pixel (0 in E-Ink/SSD1677)
+            // Black pixel (0 in E-Ink/SSD1677)
             ctx->outBuffer[byteIdx] &= ~(1 << bitIdx);
+        } else {
+            // White pixel (1 in E-Ink/SSD1677)
+            ctx->outBuffer[byteIdx] |= (1 << bitIdx);
         }
     }
 }
