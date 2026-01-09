@@ -37,10 +37,12 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint16_t ta
             return false;
         }
 
+        // Use manual callback-based open
         int rc = jpeg->open((void *)&f, (int)f.size(), [](void *p) { /* close */ }, 
                        [](JPEGFILE *pfn, uint8_t *pBuf, int32_t iLen) -> int32_t {
                            if (!pfn || !pfn->fHandle) return -1;
                            File *file = (File *)pfn->fHandle;
+                           // Use direct read to avoid wrapper overhead
                            return (int32_t)file->read(pBuf, (size_t)iLen);
                        },
                        [](JPEGFILE *pfn, int32_t iPos) -> int32_t {
@@ -71,6 +73,9 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint16_t ta
             ctx->offsetX = (targetWidth - iw) / 2;
             ctx->offsetY = (targetHeight - ih) / 2;
             
+            // Limit output size to prevent internal buffer overflow
+            jpeg->setMaxOutputSize(1); 
+
             if (jpeg->decode(ctx->offsetX, ctx->offsetY, scale)) {
                 ctx->success = true;
             }
