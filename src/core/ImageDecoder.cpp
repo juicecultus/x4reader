@@ -59,8 +59,8 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
             const int srcW = jpeg->getWidth();
             const int srcH = jpeg->getHeight();
 
-            // Full-screen "cover" strategy: choose the least downscale that still
-            // covers the target dimensions, then center-crop using negative offsets.
+            // "Fit" strategy: choose the least downscale that makes the decoded
+            // image fit within the target dimensions, then center it (letterbox).
             // NOTE: JPEGDEC can only downscale by powers of two.
             struct ScaleOpt { int opt; int shift; };
             const ScaleOpt opts[] = {
@@ -70,16 +70,15 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
                 {JPEG_SCALE_EIGHTH, 3},
             };
 
-            int scale = 0;
-            int outW = srcW;
-            int outH = srcH;
+            // Find first option that fits. If none fit, fall back to the smallest.
+            int scale = JPEG_SCALE_EIGHTH;
+            int outW = srcW >> 3;
+            int outH = srcH >> 3;
 
-            // Default to the largest output (no downscale). Then see if we can
-            // downscale while still covering the screen.
             for (size_t i = 0; i < (sizeof(opts) / sizeof(opts[0])); i++) {
                 const int w = srcW >> opts[i].shift;
                 const int h = srcH >> opts[i].shift;
-                if (w >= (int)targetWidth && h >= (int)targetHeight) {
+                if (w <= (int)targetWidth && h <= (int)targetHeight) {
                     scale = opts[i].opt;
                     outW = w;
                     outH = h;
@@ -87,9 +86,11 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
                 }
             }
 
-            // Center (or center-crop if outW/outH exceed target)
+            // Center (letterbox/pillarbox). Clamp to >= 0 to avoid accidental cropping.
             ctx->offsetX = ((int)targetWidth - outW) / 2;
             ctx->offsetY = ((int)targetHeight - outH) / 2;
+            if (ctx->offsetX < 0) ctx->offsetX = 0;
+            if (ctx->offsetY < 0) ctx->offsetY = 0;
             
             jpeg->setMaxOutputSize(1); 
 
