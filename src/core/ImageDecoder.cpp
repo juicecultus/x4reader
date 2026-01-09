@@ -153,45 +153,48 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     if (!pDraw || !g_ctx || !pDraw->pPixels) return 0;
     DecodeContext *ctx = g_ctx; 
     
-    if (!ctx->bbep) return 0;
+    if (!ctx->bbep || !ctx->errorBuf) return 0;
 
     for (int y = 0; y < pDraw->iHeight; y++) {
         int targetY = pDraw->y + y;
-        // Hardware boundary check
         if (targetY < 0 || targetY >= 480) continue;
 
-        // Safer pointer arithmetic
+        int16_t* curErr = &ctx->errorBuf[(targetY % 2) * 800];
+        int16_t* nxtErr = &ctx->errorBuf[((targetY + 1) % 2) * 800];
+        
+        if (pDraw->x == 0 && y == 0 && targetY < 479) {
+            memset(nxtErr, 0, 800 * sizeof(int16_t));
+        }
+
         const uint16_t* pSrcRow = pDraw->pPixels + (y * pDraw->iWidth);
 
         for (int x = 0; x < pDraw->iWidth; x++) {
             int targetX = pDraw->x + x;
-            // Hardware boundary check
             if (targetX < 0 || targetX >= 800) continue;
 
             uint16_t pixel = pSrcRow[x];
-            // RGB565 extraction
             uint8_t r = (pixel >> 11) & 0x1F; 
             uint8_t g = (pixel >> 5) & 0x3F;  
             uint8_t b = pixel & 0x1F;         
             
-            // Integer luminance: (R*306 + G*601 + B*117) >> 10
             uint32_t r8 = (r * 255) / 31;
             uint32_t g8 = (g * 255) / 63;
             uint32_t b8 = (b * 255) / 31;
             uint32_t lum = (r8 * 306 + g8 * 601 + b8 * 117) >> 10;
-            
-            // Direct framebuffer write (0=black, 1=white)
-            // Stride is 800/8 = 100 bytes
-            if (ctx->frameBuffer) {
-                int byteIdx = (targetY * 100) + (targetX / 8);
-                int bitIdx = 7 - (targetX % 8);
-                if (lum < 128) {
-                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                } else {
-                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                }
-            } else {
-                ctx->bbep->drawPixel(targetX, targetY, (lum < 128) ? 0 : 1);
+
+            int16_t gray = (int16_t)lum + curErr[targetX];
+            if (gray < 0) gray = 0;
+            else if (gray > 255) gray = 255;
+
+            uint8_t color = (gray < 128) ? 0 : 1;
+            ctx->bbep->drawPixel(targetX, targetY, color);
+
+            int16_t err = gray - (color ? 255 : 0);
+            if (targetX + 1 < 800) curErr[targetX + 1] += (err * 7) / 16;
+            if (targetY + 1 < 480) {
+                if (targetX > 0) nxtErr[targetX - 1] += (err * 3) / 16;
+                nxtErr[targetX] += (err * 5) / 16;
+                if (targetX + 1 < 800) nxtErr[targetX + 1] += (err * 1) / 16;
             }
         }
     }
@@ -202,7 +205,7 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
     if (!pDraw || !g_ctx) return;
     DecodeContext *ctx = g_ctx; 
     
-    if (!currentPNG || !ctx->bbep) return;
+    if (!currentPNG || !ctx->bbep || !ctx->errorBuf) return;
     
     uint16_t* usPixels = (uint16_t*)malloc(pDraw->iWidth * sizeof(uint16_t));
     if (!usPixels) return;
@@ -210,14 +213,20 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
     currentPNG->getLineAsRGB565(pDraw, usPixels, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
 
     int targetY = pDraw->y + ctx->offsetY;
-    if (targetY < 0 || targetY >= 480 || targetY >= ctx->targetHeight) {
+    if (targetY < 0 || targetY >= 480) {
         free(usPixels);
         return;
     }
 
+    int16_t* curErr = &ctx->errorBuf[(targetY % 2) * 800];
+    int16_t* nxtErr = &ctx->errorBuf[((targetY + 1) % 2) * 800];
+    if (targetY < 479) {
+        memset(nxtErr, 0, 800 * sizeof(int16_t));
+    }
+
     for (int x = 0; x < pDraw->iWidth; x++) {
         int targetX = x + ctx->offsetX;
-        if (targetX < 0 || targetX >= 800 || targetX >= ctx->targetWidth) continue;
+        if (targetX < 0 || targetX >= 800) continue;
 
         uint16_t pixel = usPixels[x];
         uint8_t r = (pixel >> 11) & 0x1F; 
@@ -229,15 +238,19 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
         uint32_t b8 = (b * 255) / 31;
         uint32_t lum = (r8 * 306 + g8 * 601 + b8 * 117) >> 10;
 
-        if (ctx->frameBuffer) {
-            int byteIdx = (targetY * 100) + (targetX / 8);
-            int bitIdx = 7 - (targetX % 8);
-            if (lum < 128) {
-                ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-            } else {
-                ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-            }
-        } else {
+        int16_t gray = (int16_t)lum + curErr[targetX];
+        if (gray < 0) gray = 0;
+        else if (gray > 255) gray = 255;
+
+        uint8_t color = (gray < 128) ? 0 : 1;
+        ctx->bbep->drawPixel(targetX, targetY, color);
+
+        int16_t err = gray - (color ? 255 : 0);
+        if (targetX + 1 < 800) curErr[targetX + 1] += (err * 7) / 16;
+        if (targetY + 1 < 480) {
+            if (targetX > 0) nxtErr[targetX - 1] += (err * 3) / 16;
+            nxtErr[targetX] += (err * 5) / 16;
+            if (targetX + 1 < 800) nxtErr[targetX + 1] += (err * 1) / 16;
             ctx->bbep->drawPixel(targetX, targetY, (lum < 128) ? 0 : 1);
         }
     }
