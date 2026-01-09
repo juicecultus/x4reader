@@ -34,21 +34,22 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint16_t ta
         int rc = jpeg.open((void *)&f, (int)f.size(), [](void *p) { /* close */ }, 
                        [](JPEGFILE *pfn, uint8_t *pBuf, int32_t iLen) -> int32_t {
                            if (!pfn || !pfn->fHandle) return -1;
-                           return ((File *)pfn->fHandle)->read(pBuf, (size_t)iLen);
+                           File *file = (File *)pfn->fHandle;
+                           return (int32_t)file->read(pBuf, (size_t)iLen);
                        },
                        [](JPEGFILE *pfn, int32_t iPos) -> int32_t {
                            if (!pfn || !pfn->fHandle) return -1;
-                           return ((File *)pfn->fHandle)->seek((uint32_t)iPos) ? iPos : -1;
+                           File *file = (File *)pfn->fHandle;
+                           return file->seek((uint32_t)iPos) ? 1 : 0;
                        }, JPEGDraw);
 
         if (rc) {
-            // Explicitly set pixel type to little-endian to avoid conversion issues
             jpeg.setPixelType(RGB565_LITTLE_ENDIAN);
             jpeg.setUserPointer(ctx);
             
-            int scale = 0;
             int iw = jpeg.getWidth();
             int ih = jpeg.getHeight();
+            int scale = 0;
 
             if (iw > targetWidth * 4 || ih > targetHeight * 4) {
                 scale = JPEG_SCALE_EIGHTH;
