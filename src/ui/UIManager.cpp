@@ -108,7 +108,7 @@ void UIManager::showSleepScreen() {
       String lf = f;
       lf.toLowerCase();
       if (lf.startsWith("._")) continue;
-      if (lf.endsWith(".jpg") || lf.endsWith(".jpeg") || lf.endsWith(".png")) {
+      if (lf.endsWith(".jpg") || lf.endsWith(".jpeg") || lf.endsWith(".png") || lf.endsWith(".bmp")) {
         images.push_back(f);
       }
     }

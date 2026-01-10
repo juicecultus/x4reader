@@ -40,6 +40,7 @@ public:
     static bool decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
 
 private:
+    static bool decodeBMPToDisplay(const char* path, DecodeContext* ctx);
     static PNG* currentPNG;
     static int JPEGDraw(JPEGDRAW *pDraw);
     
