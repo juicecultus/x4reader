@@ -319,7 +319,7 @@ void UIManager::trySyncTimeFromNtp() {
   strncpy((char*)cfg.sta.ssid, ssid.c_str(), sizeof(cfg.sta.ssid) - 1);
   strncpy((char*)cfg.sta.password, pass.c_str(), sizeof(cfg.sta.password) - 1);
   cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-  cfg.sta.pmf_cfg.capable = true;
+  cfg.sta.pmf_cfg.capable = false;
   cfg.sta.pmf_cfg.required = false;
 
   esp_err_t rc = esp_wifi_set_config(WIFI_IF_STA, &cfg);
