@@ -310,6 +310,31 @@ void UIManager::trySyncTimeFromNtp() {
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(true);
+
+  // Guard: ESP32-C3 WPA3/SAE can crash inside esp-idf wpa_supplicant on some APs (e.g. eero).
+  // Refuse to connect if the target SSID reports WPA3 or WPA2/WPA3 transition mode.
+  {
+    int n = WiFi.scanNetworks(false, true);
+    wifi_auth_mode_t auth = WIFI_AUTH_OPEN;
+    bool found = false;
+    for (int i = 0; i < n; ++i) {
+      if (WiFi.SSID(i) == ssid) {
+        auth = WiFi.encryptionType(i);
+        found = true;
+        break;
+      }
+    }
+    WiFi.scanDelete();
+
+    if (found && (auth == WIFI_AUTH_WPA3_PSK || auth == WIFI_AUTH_WPA2_WPA3_PSK)) {
+      Serial.printf("UIManager: Refusing to connect to '%s' (auth=%d) to avoid WPA3/SAE crash.\n", ssid.c_str(), (int)auth);
+      Serial.println("UIManager: Workaround: disable WPA3 on your AP or use a WPA2-only/Guest SSID.");
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+      return;
+    }
+  }
+
   Serial.printf("UIManager: WiFi connecting to '%s'...\n", ssid.c_str());
 
   // Connect using esp-idf config to force WPA2-only and avoid WPA3/SAE crashes.
