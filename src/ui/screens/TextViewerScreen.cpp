@@ -239,6 +239,10 @@ void TextViewerScreen::showPage() {
     // of returning silently so the user knows why nothing is displayed.
     display.clearScreen(0xFF);
 
+    // Ensure we render into the display framebuffer.
+    textRenderer.setFrameBuffer(display.getFrameBuffer());
+    textRenderer.setBitmapType(TextRenderer::BITMAP_BW);
+
     textRenderer.setTextColor(TextRenderer::COLOR_BLACK);
     textRenderer.setFontFamily(getCurrentFontFamily());
     textRenderer.setFontStyle(FontStyle::ITALIC);
