@@ -7,7 +7,10 @@
 #include "../../core/Settings.h"
 #include "../UIManager.h"
 
-static const char* kPwChoices = "[OK][DEL] abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.@+/\\:";
+static const char* kPwChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.@";
+static const int kChoiceOk = 0;
+static const int kChoiceDel = 1;
+static const int kChoiceCharsStart = 2;
 
 WifiPasswordEntryScreen::WifiPasswordEntryScreen(EInkDisplay& display, TextRenderer& renderer, UIManager& uiManager)
     : display(display), textRenderer(renderer), uiManager(uiManager) {}
@@ -20,11 +23,11 @@ void WifiPasswordEntryScreen::activate() {
   loadSettings();
   editOriginal = wifiPass;
   editBuffer = wifiPass;
-  choiceIndex = 0;
+  choiceIndex = kChoiceCharsStart;
 }
 
 void WifiPasswordEntryScreen::handleButtons(Buttons& buttons) {
-  int choicesLen = (int)strlen(kPwChoices);
+  int choicesLen = kChoiceCharsStart + (int)strlen(kPwChars);
 
   if (buttons.isPressed(Buttons::BACK)) {
     editBuffer = editOriginal;
@@ -63,15 +66,13 @@ void WifiPasswordEntryScreen::saveSettings() {
 }
 
 void WifiPasswordEntryScreen::choose() {
-  // First 4 chars encode [OK]
-  if (choiceIndex >= 0 && choiceIndex <= 3) {
+  if (choiceIndex == kChoiceOk) {
     wifiPass = editBuffer;
     saveSettings();
     uiManager.showScreen(UIManager::ScreenId::WifiSettings);
     return;
   }
-  // Next 5 chars encode [DEL]
-  if (choiceIndex >= 4 && choiceIndex <= 8) {
+  if (choiceIndex == kChoiceDel) {
     if (editBuffer.length() > 0) {
       editBuffer.remove(editBuffer.length() - 1);
     }
@@ -79,8 +80,9 @@ void WifiPasswordEntryScreen::choose() {
     return;
   }
 
-  char c = kPwChoices[choiceIndex];
-  if (c != '[' && c != ']' && c != 'O' && c != 'K' && c != 'D' && c != 'E' && c != 'L') {
+  int charIdx = choiceIndex - kChoiceCharsStart;
+  if (charIdx >= 0 && charIdx < (int)strlen(kPwChars)) {
+    char c = kPwChars[charIdx];
     if (editBuffer.length() < 64) {
       editBuffer += c;
     }
@@ -125,13 +127,14 @@ void WifiPasswordEntryScreen::render() {
   }
 
   {
-    char c = kPwChoices[choiceIndex];
     String choice;
-    if (choiceIndex >= 0 && choiceIndex <= 3) {
+    if (choiceIndex == kChoiceOk) {
       choice = "[OK]";
-    } else if (choiceIndex >= 4 && choiceIndex <= 8) {
+    } else if (choiceIndex == kChoiceDel) {
       choice = "[DEL]";
     } else {
+      int charIdx = choiceIndex - kChoiceCharsStart;
+      char c = (charIdx >= 0 && charIdx < (int)strlen(kPwChars)) ? kPwChars[charIdx] : '?';
       choice = String("[") + String(c) + String("]");
     }
 
