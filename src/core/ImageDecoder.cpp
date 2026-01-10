@@ -109,8 +109,20 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
     ctx->rotateSource90 = false;
     ctx->decodedWidth = (uint16_t)bmpW;
     ctx->decodedHeight = (uint16_t)absH;
+    ctx->renderWidth = (uint16_t)bmpW;
+    ctx->renderHeight = (uint16_t)absH;
     ctx->offsetX = ((int)ctx->targetWidth - (int)bmpW) / 2;
     ctx->offsetY = ((int)ctx->targetHeight - (int)absH) / 2;
+
+    if (ctx->scaleToWidth && bmpW > 0) {
+        // Preserve aspect ratio, force full target width.
+        const int outW = (int)ctx->targetWidth;
+        const int outH = (int)((((int64_t)absH) * (int64_t)outW) / (int64_t)bmpW);
+        ctx->renderWidth = (uint16_t)outW;
+        ctx->renderHeight = (uint16_t)outH;
+        ctx->offsetX = 0;
+        ctx->offsetY = ((int)ctx->targetHeight - outH) / 2;
+    }
 
     Serial.printf("ImageDecoder: BMP %ldx%ld bpp=%u topDown=%d dataOffset=%lu offset=%d,%d\n",
                   (long)bmpW, (long)absH, (unsigned)bpp, topDown ? 1 : 0,
@@ -122,51 +134,109 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
     std::vector<uint8_t> row;
     row.resize(rowStride);
 
-    for (int32_t y = 0; y < absH; y++) {
-        const int32_t srcRow = topDown ? y : (absH - 1 - y);
-        const uint32_t rowPos = dataOffset + (uint32_t)srcRow * rowStride;
-        if (!f.seek(rowPos)) {
-            Serial.printf("ImageDecoder: BMP seek failed at row %ld pos=%lu\n", (long)y, (unsigned long)rowPos);
-            f.close();
-            return false;
-        }
+    if (!ctx->scaleToWidth) {
+        for (int32_t y = 0; y < absH; y++) {
+            const int32_t srcRow = topDown ? y : (absH - 1 - y);
+            const uint32_t rowPos = dataOffset + (uint32_t)srcRow * rowStride;
+            if (!f.seek(rowPos)) {
+                Serial.printf("ImageDecoder: BMP seek failed at row %ld pos=%lu\n", (long)y, (unsigned long)rowPos);
+                f.close();
+                return false;
+            }
 
-        const int32_t r = (int32_t)f.read(row.data(), row.size());
-        if (r != (int32_t)row.size()) {
-            Serial.printf("ImageDecoder: BMP short read row %ld got=%ld need=%lu\n", (long)y, (long)r, (unsigned long)row.size());
-            f.close();
-            return false;
-        }
+            const int32_t r = (int32_t)f.read(row.data(), row.size());
+            if (r != (int32_t)row.size()) {
+                Serial.printf("ImageDecoder: BMP short read row %ld got=%ld need=%lu\n", (long)y, (long)r, (unsigned long)row.size());
+                f.close();
+                return false;
+            }
 
-        const int py = ctx->offsetY + (int)y;
-        if (py < 0 || py >= (int)ctx->targetHeight) continue;
+            const int py = ctx->offsetY + (int)y;
+            if (py < 0 || py >= (int)ctx->targetHeight) continue;
 
-        for (int32_t x = 0; x < bmpW; x++) {
-            const int px = ctx->offsetX + (int)x;
-            if (px < 0 || px >= (int)ctx->targetWidth) continue;
+            for (int32_t x = 0; x < bmpW; x++) {
+                const int px = ctx->offsetX + (int)x;
+                if (px < 0 || px >= (int)ctx->targetWidth) continue;
 
-            const uint8_t b = row[(uint32_t)x * bytesPerPixel + 0];
-            const uint8_t g = row[(uint32_t)x * bytesPerPixel + 1];
-            const uint8_t rr = row[(uint32_t)x * bytesPerPixel + 2];
+                const uint8_t b = row[(uint32_t)x * bytesPerPixel + 0];
+                const uint8_t g = row[(uint32_t)x * bytesPerPixel + 1];
+                const uint8_t rr = row[(uint32_t)x * bytesPerPixel + 2];
 
-            const uint32_t lum = (rr * 306U + g * 601U + b * 117U) >> 10;
-            const uint8_t color = (lum < 128U) ? 0 : 1;
+                const uint32_t lum = (rr * 306U + g * 601U + b * 117U) >> 10;
+                const uint8_t color = (lum < 128U) ? 0 : 1;
 
-            // portrait logical -> physical framebuffer mapping
-            const int fx = py;
-            const int fy = 479 - px;
-            if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
+                // portrait logical -> physical framebuffer mapping
+                const int fx = py;
+                const int fy = 479 - px;
+                if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
 
-            if (ctx->frameBuffer) {
-                const int byteIdx = (fy * 100) + (fx / 8);
-                const int bitIdx = 7 - (fx % 8);
-                if (color == 0) {
-                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+                if (ctx->frameBuffer) {
+                    const int byteIdx = (fy * 100) + (fx / 8);
+                    const int bitIdx = 7 - (fx % 8);
+                    if (color == 0) {
+                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+                    } else {
+                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+                    }
                 } else {
-                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+                    ctx->bbep->drawPixel(fx, fy, color);
                 }
-            } else {
-                ctx->bbep->drawPixel(fx, fy, color);
+            }
+        }
+    } else {
+        const int outW = (int)ctx->renderWidth;
+        const int outH = (int)ctx->renderHeight;
+
+        for (int dy = 0; dy < outH; ++dy) {
+            const int py = ctx->offsetY + dy;
+            if (py < 0 || py >= (int)ctx->targetHeight) continue;
+
+            int sy = (int)((((int64_t)dy) * (int64_t)absH) / (int64_t)outH);
+            if (sy < 0) sy = 0;
+            if (sy >= (int)absH) sy = (int)absH - 1;
+            const int32_t srcRow = topDown ? sy : ((int32_t)absH - 1 - sy);
+            const uint32_t rowPos = dataOffset + (uint32_t)srcRow * rowStride;
+            if (!f.seek(rowPos)) {
+                Serial.printf("ImageDecoder: BMP seek failed at scaled row %d pos=%lu\n", dy, (unsigned long)rowPos);
+                f.close();
+                return false;
+            }
+
+            const int32_t r = (int32_t)f.read(row.data(), row.size());
+            if (r != (int32_t)row.size()) {
+                Serial.printf("ImageDecoder: BMP short read scaled row %d got=%ld need=%lu\n", dy, (long)r, (unsigned long)row.size());
+                f.close();
+                return false;
+            }
+
+            for (int dx = 0; dx < outW; ++dx) {
+                const int px = dx;
+                if (px < 0 || px >= (int)ctx->targetWidth) continue;
+                int sx = (int)((((int64_t)dx) * (int64_t)bmpW) / (int64_t)outW);
+                if (sx < 0) sx = 0;
+                if (sx >= (int)bmpW) sx = (int)bmpW - 1;
+
+                const uint8_t b = row[(uint32_t)sx * bytesPerPixel + 0];
+                const uint8_t g = row[(uint32_t)sx * bytesPerPixel + 1];
+                const uint8_t rr = row[(uint32_t)sx * bytesPerPixel + 2];
+                const uint32_t lum = (rr * 306U + g * 601U + b * 117U) >> 10;
+                const uint8_t color = (lum < 128U) ? 0 : 1;
+
+                const int fx = py;
+                const int fy = 479 - px;
+                if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
+
+                if (ctx->frameBuffer) {
+                    const int byteIdx = (fy * 100) + (fx / 8);
+                    const int bitIdx = 7 - (fx % 8);
+                    if (color == 0) {
+                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+                    } else {
+                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+                    }
+                } else {
+                    ctx->bbep->drawPixel(fx, fy, color);
+                }
             }
         }
     }
@@ -192,7 +262,10 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
     ctx->offsetY = 0;
     ctx->decodedWidth = 0;
     ctx->decodedHeight = 0;
+    ctx->renderWidth = 0;
+    ctx->renderHeight = 0;
     ctx->rotateSource90 = false;
+    ctx->scaleToWidth = false;
     ctx->errorBuf = errorBuffer.data();
     ctx->success = false;
     g_ctx = ctx;
@@ -285,6 +358,8 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
 
             const int visW = ctx->rotateSource90 ? outH : outW;
             const int visH = ctx->rotateSource90 ? outW : outH;
+            ctx->renderWidth = (uint16_t)visW;
+            ctx->renderHeight = (uint16_t)visH;
 
             // Center. Offsets may be negative when center-cropping to fill the screen.
             ctx->offsetX = ((int)targetWidth - visW) / 2;
@@ -489,6 +564,8 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
             ctx->rotateSource90 = false;
             ctx->decodedWidth = (uint16_t)iw;
             ctx->decodedHeight = (uint16_t)ih;
+            ctx->renderWidth = (uint16_t)iw;
+            ctx->renderHeight = (uint16_t)ih;
 
             ctx->offsetX = ((int)targetWidth - iw) / 2;
             ctx->offsetY = ((int)targetHeight - ih) / 2;
@@ -523,12 +600,281 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         currentPNG = nullptr;
         delete png;
     } else if (p.endsWith(".bmp")) {
-        if (decodeBMPToDisplay(path, ctx)) {
-            ctx->success = true;
+        bool result = decodeBMPToDisplay(path, ctx);
+        ctx->success = result;
+        if (result) {
             Serial.println("ImageDecoder: BMP decode successful");
         } else {
             Serial.println("ImageDecoder: BMP decode failed");
         }
+    }
+
+    bool result = ctx->success;
+    delete ctx;
+    g_ctx = nullptr;
+    return result;
+}
+
+bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+    String p = String(path);
+    p.toLowerCase();
+
+    std::vector<int16_t> errorBuffer(targetWidth * 2, 0);
+    DecodeContext* ctx = new DecodeContext();
+    if (!ctx) return false;
+
+    ctx->bbep = bbep;
+    ctx->frameBuffer = frameBuffer;
+    ctx->targetWidth = targetWidth;
+    ctx->targetHeight = targetHeight;
+    ctx->offsetX = 0;
+    ctx->offsetY = 0;
+    ctx->decodedWidth = 0;
+    ctx->decodedHeight = 0;
+    ctx->renderWidth = 0;
+    ctx->renderHeight = 0;
+    ctx->rotateSource90 = false;
+    ctx->scaleToWidth = true;
+    ctx->errorBuf = errorBuffer.data();
+    ctx->success = false;
+    g_ctx = ctx;
+
+    if (p.endsWith(".bmp")) {
+        ctx->success = decodeBMPToDisplay(path, ctx);
+    } else if (p.endsWith(".jpg") || p.endsWith(".jpeg")) {
+        JPEGDEC* jpeg = new JPEGDEC();
+        if (!jpeg) {
+            delete ctx;
+            g_ctx = nullptr;
+            return false;
+        }
+        File f = SD.open(path);
+        if (!f) {
+            Serial.printf("ImageDecoder: Failed to open %s\n", path);
+            delete jpeg;
+            delete ctx;
+            g_ctx = nullptr;
+            return false;
+        }
+
+        int rc = jpeg->open((void *)&f, (int)f.size(), [](void *p) { /* close */ },
+                       [](JPEGFILE *pfn, uint8_t *pBuf, int32_t iLen) -> int32_t {
+                           if (!pfn || !pfn->fHandle) return -1;
+                           File *file = (File *)pfn->fHandle;
+                           return (int32_t)file->read(pBuf, (size_t)iLen);
+                       },
+                       [](JPEGFILE *pfn, int32_t iPos) -> int32_t {
+                           if (!pfn || !pfn->fHandle) return -1;
+                           File *file = (File *)pfn->fHandle;
+                           return file->seek((uint32_t)iPos) ? 1 : 0;
+                       }, JPEGDraw);
+
+        if (rc) {
+            jpeg->setPixelType(RGB565_LITTLE_ENDIAN);
+            jpeg->setUserPointer(ctx);
+
+            const int srcW = jpeg->getWidth();
+            const int srcH = jpeg->getHeight();
+            ctx->rotateSource90 = (targetHeight > targetWidth) && (srcW > srcH);
+
+            // Choose the largest downscale that still covers target width
+            struct ScaleOpt { int opt; int shift; };
+            const ScaleOpt opts[] = {
+                {JPEG_SCALE_EIGHTH, 3},
+                {JPEG_SCALE_QUARTER, 2},
+                {JPEG_SCALE_HALF, 1},
+                {0, 0},
+            };
+            int scale = 0;
+            int outW = srcW;
+            int outH = srcH;
+
+            // Default to full res if nothing qualifies
+            for (size_t i = 0; i < (sizeof(opts) / sizeof(opts[0])); i++) {
+                const int w = srcW >> opts[i].shift;
+                const int h = srcH >> opts[i].shift;
+                const int visW = ctx->rotateSource90 ? h : w;
+                if (visW >= (int)targetWidth) {
+                    scale = opts[i].opt;
+                    outW = w;
+                    outH = h;
+                    break;
+                }
+            }
+
+            ctx->decodedWidth = (uint16_t)outW;
+            ctx->decodedHeight = (uint16_t)outH;
+
+            const int visW = ctx->rotateSource90 ? outH : outW;
+            const int visH = ctx->rotateSource90 ? outW : outH;
+            ctx->renderWidth = (uint16_t)visW;
+            ctx->renderHeight = (uint16_t)visH;
+
+            ctx->offsetX = ((int)targetWidth - visW) / 2;
+            ctx->offsetY = ((int)targetHeight - visH) / 2;
+
+            jpeg->setMaxOutputSize(1);
+
+            if (jpeg->decode(0, 0, scale)) {
+                ctx->success = true;
+            }
+            jpeg->close();
+        }
+
+        f.close();
+        delete jpeg;
+    } else if (p.endsWith(".png")) {
+        PNG* png = new PNG();
+        if (!png) {
+            delete ctx;
+            g_ctx = nullptr;
+            return false;
+        }
+        currentPNG = png;
+
+        int rc = png->open(path, [](const char *szFilename, int32_t *pFileSize) -> void * {
+            File *file = new File(SD.open(szFilename));
+            if (file && *file) {
+                file->seek(0);
+                *pFileSize = (int32_t)file->size();
+                return (void *)file;
+            }
+            if (file) delete file;
+            return NULL;
+        }, [](void *pHandle) {
+            File *file = (File *)pHandle;
+            if (file) {
+                file->close();
+                delete file;
+            }
+        }, [](PNGFILE *pfn, uint8_t *pBuffer, int32_t iLength) -> int32_t {
+            if (!pfn || !pfn->fHandle) return -1;
+            File *file = (File *)pfn->fHandle;
+            int32_t total = 0;
+            while (total < iLength) {
+                int32_t n = (int32_t)file->read(pBuffer + total, (size_t)(iLength - total));
+                if (n <= 0) break;
+                total += n;
+            }
+            return total;
+        }, [](PNGFILE *pfn, int32_t iPos) -> int32_t {
+            if (!pfn || !pfn->fHandle) return -1;
+            File *file = (File *)pfn->fHandle;
+            return file->seek((uint32_t)iPos) ? iPos : -1;
+        }, [](PNGDRAW *pDraw) -> int {
+            if (!pDraw || !g_ctx) return 0;
+            DecodeContext *ctx = g_ctx;
+            if (!currentPNG || !ctx->bbep || !ctx->errorBuf) return 0;
+
+            uint16_t* usPixels = (uint16_t*)malloc(pDraw->iWidth * sizeof(uint16_t));
+            if (!usPixels) return 0;
+            currentPNG->getLineAsRGB565(pDraw, usPixels, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+
+            const int srcW = (int)ctx->decodedWidth;
+            const int srcH = (int)ctx->decodedHeight;
+            const int outW = (int)ctx->targetWidth;
+            const int outH = (int)ctx->renderHeight;
+            const int sy = pDraw->y;
+
+            int dy0 = 0;
+            int dy1 = -1;
+            if (srcH > 0 && outH > 0) {
+                dy0 = (int)((((int64_t)sy) * (int64_t)outH) / (int64_t)srcH);
+                dy1 = (int)((((int64_t)(sy + 1)) * (int64_t)outH) / (int64_t)srcH) - 1;
+                if (dy1 < dy0) dy1 = dy0;
+            }
+
+            for (int dy = dy0; dy <= dy1; ++dy) {
+                const int py = ctx->offsetY + dy;
+                if (py < 0 || py >= (int)ctx->targetHeight) continue;
+
+                const int w = (int)ctx->targetWidth;
+                int16_t* curErr = &ctx->errorBuf[(py % 2) * w];
+                int16_t* nxtErr = &ctx->errorBuf[((py + 1) % 2) * w];
+                if (py + 1 < (int)ctx->targetHeight) {
+                    memset(nxtErr, 0, (size_t)w * sizeof(int16_t));
+                }
+
+                for (int dx = 0; dx < outW; ++dx) {
+                    int sx = 0;
+                    if (srcW > 0) {
+                        sx = (int)((((int64_t)dx) * (int64_t)srcW) / (int64_t)outW);
+                        if (sx < 0) sx = 0;
+                        if (sx >= srcW) sx = srcW - 1;
+                    }
+
+                    const int px = dx;
+                    const int fx = py;
+                    const int fy = 479 - px;
+                    if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
+
+                    uint16_t pixel = usPixels[sx];
+                    uint8_t r = (pixel >> 11) & 0x1F;
+                    uint8_t g = (pixel >> 5) & 0x3F;
+                    uint8_t b = pixel & 0x1F;
+
+                    uint32_t r8 = (r * 255) / 31;
+                    uint32_t g8 = (g * 255) / 63;
+                    uint32_t b8 = (b * 255) / 31;
+                    uint32_t lum = (r8 * 306 + g8 * 601 + b8 * 117) >> 10;
+
+                    int16_t gray = (int16_t)lum + curErr[px];
+                    if (gray < 0) gray = 0;
+                    else if (gray > 255) gray = 255;
+
+                    uint8_t color = (gray < 128) ? 0 : 1;
+
+                    if (ctx->frameBuffer) {
+                        int byteIdx = (fy * 100) + (fx / 8);
+                        int bitIdx = 7 - (fx % 8);
+                        if (color == 0) {
+                            ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
+                        } else {
+                            ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
+                        }
+                    } else {
+                        ctx->bbep->drawPixel(fx, fy, color);
+                    }
+
+                    int16_t err = gray - (color ? 255 : 0);
+                    if (px + 1 < w) curErr[px + 1] += (err * 7) / 16;
+                    if (py + 1 < (int)ctx->targetHeight) {
+                        if (px > 0) nxtErr[px - 1] += (err * 3) / 16;
+                        nxtErr[px] += (err * 5) / 16;
+                        if (px + 1 < w) nxtErr[px + 1] += (err * 1) / 16;
+                    }
+                }
+            }
+
+            free(usPixels);
+            return 1;
+        });
+
+        if (rc == PNG_SUCCESS) {
+            int iw = png->getWidth();
+            int ih = png->getHeight();
+
+            ctx->rotateSource90 = false;
+            ctx->decodedWidth = (uint16_t)iw;
+            ctx->decodedHeight = (uint16_t)ih;
+
+            const int outW = (int)targetWidth;
+            const int outH = (iw > 0) ? (int)((((int64_t)ih) * (int64_t)outW) / (int64_t)iw) : 0;
+            ctx->renderWidth = (uint16_t)outW;
+            ctx->renderHeight = (uint16_t)outH;
+
+            ctx->offsetX = 0;
+            ctx->offsetY = ((int)targetHeight - outH) / 2;
+
+            rc = png->decode(ctx, 0);
+            if (rc == PNG_SUCCESS) {
+                ctx->success = true;
+            }
+            png->close();
+        }
+
+        currentPNG = nullptr;
+        delete png;
     }
 
     bool result = ctx->success;

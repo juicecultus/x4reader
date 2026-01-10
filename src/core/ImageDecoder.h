@@ -23,7 +23,10 @@ public:
         int16_t offsetY;
         uint16_t decodedWidth;
         uint16_t decodedHeight;
+        uint16_t renderWidth;
+        uint16_t renderHeight;
         bool rotateSource90;
+        bool scaleToWidth;
         int16_t* errorBuf;
         bool success;
     };
@@ -38,6 +41,8 @@ public:
      * @return true if decoding was successful.
      */
     static bool decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
+
+    static bool decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
 
 private:
     static bool decodeBMPToDisplay(const char* path, DecodeContext* ctx);

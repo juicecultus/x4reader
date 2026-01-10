@@ -315,7 +315,7 @@ void UIManager::showSleepScreen() {
     String coverPath = settings->getString(String("textviewer.lastCoverPath"), String(""));
     if (coverPath.length() > 0 && SD.exists(coverPath.c_str())) {
       Serial.printf("Selecting book cover sleep screen: %s\n", coverPath.c_str());
-      if (ImageDecoder::decodeToDisplay(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+      if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
         usedRandomCover = true;
       } else {
         Serial.println("Failed to decode book cover sleep screen");
@@ -491,7 +491,7 @@ void UIManager::renderStatusHeader(TextRenderer& renderer) {
   const int16_t iconH = 12;
   const int16_t nubW = 3;
   const int16_t nubH = 6;
-  const int16_t gap = 4;
+  const int16_t gap = 6;
 
   int16_t groupW = iconW + gap + (int16_t)tw;
   int16_t groupX = 480 - marginRight - groupW;
