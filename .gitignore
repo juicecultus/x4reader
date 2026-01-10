@@ -27,3 +27,6 @@ __pycache__
 /resources/fonts/Bookerly Bold.ttf
 /resources/fonts/Bookerly Bold Italic.ttf
 /3_1_1_backup.bin
+
+.DS_Store
+crosspoint-reader/
