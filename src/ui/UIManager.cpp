@@ -55,8 +55,7 @@ void UIManager::begin() {
       settings->load();
   }
 
-  // Attempt WiFi + NTP time sync early so the clock is available on the first render.
-  trySyncTimeFromNtp();
+  // NTP sync is triggered manually from the WiFi settings screen.
 
   // Restore soft clock (HH:MM) from consolidated settings
   if (sdManager.ready() && settings) {
