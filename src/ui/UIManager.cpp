@@ -334,23 +334,54 @@ void UIManager::showSleepScreen() {
     }
 
     if (!images.empty()) {
-      uint32_t r = esp_random();
-      int idx = (int)(r % images.size());
+      auto bmpIsSupported = [](const String& fullPath) -> bool {
+        String lf = fullPath;
+        lf.toLowerCase();
+        if (!lf.endsWith(".bmp")) {
+          return true;
+        }
+        File f = SD.open(fullPath.c_str(), FILE_READ);
+        if (!f) {
+          return false;
+        }
+        uint8_t hdr[54];
+        int n = (int)f.read(hdr, sizeof(hdr));
+        f.close();
+        if (n != (int)sizeof(hdr)) {
+          return false;
+        }
+        if (hdr[0] != 'B' || hdr[1] != 'M') {
+          return false;
+        }
+        uint32_t compression = (uint32_t)hdr[30] | ((uint32_t)hdr[31] << 8) | ((uint32_t)hdr[32] << 16) | ((uint32_t)hdr[33] << 24);
+        return compression == 0;
+      };
 
-      // Avoid immediately repeating the same image across deep sleep cycles.
-      if ((int)images.size() > 1 && idx == g_lastSleepCoverIndex) {
-        idx = (idx + 1 + (int)((r >> 16) % (images.size() - 1))) % images.size();
-      }
-      g_lastSleepCoverIndex = idx;
+      const int maxAttempts = (int)std::min<size_t>(images.size(), 6);
+      for (int attempt = 0; attempt < maxAttempts && !usedRandomCover; ++attempt) {
+        uint32_t r = esp_random();
+        int idx = (int)(r % images.size());
 
-      String selected = String("/images/") + images[idx];
-      Serial.printf("Selecting random sleep cover: %s\n", selected.c_str());
-      
-      // decodeToDisplay writes directly to the buffer we pass it.
-      // We pass the current back buffer (which display.getFrameBuffer() returns).
-      if (ImageDecoder::decodeToDisplay(selected.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
-        usedRandomCover = true;
-      } else {
+        // Avoid immediately repeating the same image across deep sleep cycles.
+        if ((int)images.size() > 1 && idx == g_lastSleepCoverIndex) {
+          idx = (idx + 1 + (int)((r >> 16) % (images.size() - 1))) % images.size();
+        }
+
+        String selected = String("/images/") + images[idx];
+        if (!bmpIsSupported(selected)) {
+          Serial.printf("Skipping unsupported BMP sleep cover: %s\n", selected.c_str());
+          continue;
+        }
+
+        Serial.printf("Selecting random sleep cover: %s\n", selected.c_str());
+
+        // decodeToDisplay writes directly to the buffer we pass it.
+        // We pass the current back buffer (which display.getFrameBuffer() returns).
+        if (ImageDecoder::decodeToDisplay(selected.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+          usedRandomCover = true;
+          g_lastSleepCoverIndex = idx;
+          break;
+        }
         Serial.println("Failed to decode random sleep cover");
       }
     }
