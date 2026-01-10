@@ -29,6 +29,16 @@ bool SDCardManager::ready() const {
   return initialized;
 }
 
+void SDCardManager::ensureSpiBusIdle() {
+  // SD and the e-ink controller share the same SPI bus. If the e-ink CS is
+  // left asserted, SD transactions can fail in the SD stack (sometimes
+  // fatally). Force both devices deselected before any SD access.
+  pinMode(eink_cs, OUTPUT);
+  digitalWrite(eink_cs, HIGH);
+  pinMode(sd_cs, OUTPUT);
+  digitalWrite(sd_cs, HIGH);
+}
+
 bool SDCardManager::isDirectory(const char* path) {
   if (!initialized) {
     return false;
@@ -50,6 +60,8 @@ std::vector<String> SDCardManager::listFiles(const char* path, int maxFiles) {
     Serial.println("SDCardManager: not initialized, returning empty list");
     return ret;
   }
+
+  ensureSpiBusIdle();
 
   File root = SD.open(path);
   if (!root) {
@@ -87,6 +99,8 @@ String SDCardManager::readFile(const char* path) {
     return String("");
   }
 
+  ensureSpiBusIdle();
+
   File f = SD.open(path);
   if (!f) {
     Serial.printf("Failed to open file: %s\n", path);
@@ -110,6 +124,8 @@ bool SDCardManager::readFileToStream(const char* path, Print& out, size_t chunkS
     Serial.println("SDCardManager: not initialized; cannot read file");
     return false;
   }
+
+  ensureSpiBusIdle();
 
   File f = SD.open(path);
   if (!f) {
@@ -142,6 +158,8 @@ size_t SDCardManager::readFileToBuffer(const char* path, char* buffer, size_t bu
     buffer[0] = '\0';
     return 0;
   }
+
+  ensureSpiBusIdle();
 
   File f = SD.open(path);
   if (!f) {
@@ -176,6 +194,8 @@ bool SDCardManager::writeFile(const char* path, const String& content) {
     return false;
   }
 
+  ensureSpiBusIdle();
+
   // Remove existing file so we perform an overwrite rather than append
   if (SD.exists(path)) {
     SD.remove(path);
@@ -197,6 +217,8 @@ bool SDCardManager::ensureDirectoryExists(const char* path) {
     Serial.println("SDCardManager: not initialized; cannot create directory");
     return false;
   }
+
+  ensureSpiBusIdle();
 
   // Check if directory already exists
   if (SD.exists(path)) {

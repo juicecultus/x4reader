@@ -313,6 +313,11 @@ void UIManager::showSleepScreen() {
 
   if (sleepMode == 0 && settings) {
     String coverPath = settings->getString(String("textviewer.lastCoverPath"), String(""));
+    if (coverPath.length() > 0) {
+      // SD and the e-ink controller share SPI; ensure CS lines are in a safe state
+      // before we touch SD during shutdown.
+      sdManager.ensureSpiBusIdle();
+    }
     if (coverPath.length() > 0 && SD.exists(coverPath.c_str())) {
       Serial.printf("Selecting book cover sleep screen: %s\n", coverPath.c_str());
       if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
