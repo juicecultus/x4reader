@@ -4,7 +4,11 @@
 #include <resources/fonts/FontManager.h>
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <time.h>
+#include <sys/time.h>
+
+#include <esp_sntp.h>
 
 #include <esp_system.h>
 
@@ -20,6 +24,138 @@
 #include "ui/screens/WifiSsidSelectScreen.h"
 
 RTC_DATA_ATTR static int32_t g_lastSleepCoverIndex = -1;
+RTC_DATA_ATTR static int64_t g_lastGoodEpochSec = 0;
+
+static int buildMonthToIndex(const char* mon) {
+  if (!mon)
+    return 0;
+  if (strncmp(mon, "Jan", 3) == 0)
+    return 0;
+  if (strncmp(mon, "Feb", 3) == 0)
+    return 1;
+  if (strncmp(mon, "Mar", 3) == 0)
+    return 2;
+  if (strncmp(mon, "Apr", 3) == 0)
+    return 3;
+  if (strncmp(mon, "May", 3) == 0)
+    return 4;
+  if (strncmp(mon, "Jun", 3) == 0)
+    return 5;
+  if (strncmp(mon, "Jul", 3) == 0)
+    return 6;
+  if (strncmp(mon, "Aug", 3) == 0)
+    return 7;
+  if (strncmp(mon, "Sep", 3) == 0)
+    return 8;
+  if (strncmp(mon, "Oct", 3) == 0)
+    return 9;
+  if (strncmp(mon, "Nov", 3) == 0)
+    return 10;
+  if (strncmp(mon, "Dec", 3) == 0)
+    return 11;
+  return 0;
+}
+
+static bool isLeapYear(int y) {
+  if ((y % 400) == 0)
+    return true;
+  if ((y % 100) == 0)
+    return false;
+  return (y % 4) == 0;
+}
+
+static int64_t computeBuildEpochUtc() {
+  const char* d = __DATE__;
+  const char* t = __TIME__;
+  if (!d || !t)
+    return 0;
+
+  char monStr[4];
+  monStr[0] = d[0];
+  monStr[1] = d[1];
+  monStr[2] = d[2];
+  monStr[3] = 0;
+  int mon = buildMonthToIndex(monStr);
+  int day = atoi(d + 4);
+  int year = atoi(d + 7);
+  int hour = atoi(t);
+  int min = atoi(t + 3);
+  int sec = atoi(t + 6);
+
+  if (year < 1970)
+    return 0;
+
+  int64_t days = 0;
+  for (int y = 1970; y < year; ++y) {
+    days += isLeapYear(y) ? 366 : 365;
+  }
+
+  static const int mdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  for (int m = 0; m < mon; ++m) {
+    days += mdays[m];
+    if (m == 1 && isLeapYear(year)) {
+      days += 1;
+    }
+  }
+
+  days += (day - 1);
+  return (days * 86400LL) + ((int64_t)hour * 3600LL) + ((int64_t)min * 60LL) + (int64_t)sec;
+}
+
+static bool queryNtpUnixEpoch(const char* server, uint32_t timeoutMs, int64_t& outUnixEpochSec) {
+  outUnixEpochSec = 0;
+  if (!server || server[0] == 0) {
+    return false;
+  }
+
+  IPAddress serverIp;
+  if (!WiFi.hostByName(server, serverIp)) {
+    return false;
+  }
+
+  WiFiUDP udp;
+  if (udp.begin(0) == 0) {
+    return false;
+  }
+
+  uint8_t packet[48];
+  memset(packet, 0, sizeof(packet));
+  packet[0] = 0b11100011;
+  packet[1] = 0;
+  packet[2] = 6;
+  packet[3] = 0xEC;
+  packet[12] = 49;
+  packet[13] = 0x4E;
+  packet[14] = 49;
+  packet[15] = 52;
+
+  udp.beginPacket(serverIp, 123);
+  udp.write(packet, sizeof(packet));
+  udp.endPacket();
+
+  uint32_t start = millis();
+  while ((millis() - start) < timeoutMs) {
+    int packetSize = udp.parsePacket();
+    if (packetSize >= 48) {
+      int len = udp.read(packet, sizeof(packet));
+      if (len < 48) {
+        return false;
+      }
+
+      uint32_t secs1900 = ((uint32_t)packet[40] << 24) | ((uint32_t)packet[41] << 16) | ((uint32_t)packet[42] << 8) |
+                          (uint32_t)packet[43];
+      const uint32_t kUnixOffset = 2208988800UL;
+      if (secs1900 < kUnixOffset) {
+        return false;
+      }
+      outUnixEpochSec = (int64_t)(secs1900 - kUnixOffset);
+      return true;
+    }
+    delay(10);
+  }
+
+  return false;
+}
 
 UIManager::UIManager(EInkDisplay& display, SDCardManager& sdManager)
     : display(display), sdManager(sdManager), textRenderer(display) {
@@ -55,20 +191,12 @@ void UIManager::begin() {
       settings->load();
   }
 
-  // NTP sync is triggered manually from the WiFi settings screen.
-
   // Restore soft clock (HH:MM) from consolidated settings
   if (sdManager.ready() && settings) {
-    int h = -1;
-    int m = -1;
-    bool hasH = settings->getInt(String("clock.hour"), h);
-    bool hasM = settings->getInt(String("clock.minute"), m);
-    if (hasH && hasM) {
-      Serial.printf("[%lu] UIManager: Restored clock %02d:%02d from settings\n", millis(), h, m);
-      setClockHM(h, m);
-    } else {
-      Serial.printf("[%lu] UIManager: No clock in settings (hour=%d ok=%d, minute=%d ok=%d)\n", millis(), h, hasH ? 1 : 0,
-                    m, hasM ? 1 : 0);
+    int savedH = 0;
+    int savedM = 0;
+    if (settings->getInt(String("clock.hour"), savedH) && settings->getInt(String("clock.minute"), savedM)) {
+      setClockHM(savedH, savedM);
     }
   }
   // Initialize screens using generic Screen interface
@@ -112,7 +240,45 @@ void UIManager::begin() {
   // Apply saved previousScreen after showScreen (which modifies previousScreen)
   previousScreen = savedPreviousScreen;
 
+  startAutoNtpSyncIfEnabled();
+
   Serial.printf("[%lu] UIManager initialized\n", millis());
+}
+
+void UIManager::ntpSyncTaskTrampoline(void* param) {
+  UIManager* self = static_cast<UIManager*>(param);
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
+
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    self->trySyncTimeFromNtp();
+    if (self->ntpTimeValid) {
+      break;
+    }
+    vTaskDelay((3000 * (attempt + 1)) / portTICK_PERIOD_MS);
+  }
+  self->ntpSyncInProgress = false;
+  self->ntpSyncTaskHandle = nullptr;
+  vTaskDelete(nullptr);
+}
+
+void UIManager::startAutoNtpSyncIfEnabled() {
+  if (!sdManager.ready() || !settings) {
+    return;
+  }
+  if (ntpSyncInProgress) {
+    return;
+  }
+  int wifiEnabled = 0;
+  (void)settings->getInt(String("wifi.enabled"), wifiEnabled);
+  if (wifiEnabled == 0) {
+    return;
+  }
+  String ssid = settings->getString(String("wifi.ssid"));
+  if (ssid.length() == 0) {
+    return;
+  }
+  ntpSyncInProgress = true;
+  xTaskCreate(&UIManager::ntpSyncTaskTrampoline, "NtpSync", 8192, this, 1, &ntpSyncTaskHandle);
 }
 
 void UIManager::handleButtons(Buttons& buttons) {
@@ -260,13 +426,11 @@ bool UIManager::getClockHM(int& hourOut, int& minuteOut) {
 
 String UIManager::getClockString() {
   if (ntpTimeValid) {
-    time_t now = time(nullptr);
-    // Treat anything before 2020-01-01 as invalid / unsynced
-    if (now > 1577836800) {
-      struct tm tmNow;
-      localtime_r(&now, &tmNow);
+    int h = 0;
+    int m = 0;
+    if (getClockHM(h, m)) {
       char buf[6];
-      snprintf(buf, sizeof(buf), "%02d:%02d", tmNow.tm_hour, tmNow.tm_min);
+      snprintf(buf, sizeof(buf), "%02d:%02d", h, m);
       return String(buf);
     }
     ntpTimeValid = false;
@@ -307,8 +471,6 @@ void UIManager::trySyncTimeFromNtp() {
   (void)settings->getInt(String("wifi.daylightOffset"), daylightOffset);
 
   WiFi.mode(WIFI_STA);
-  // Match the working Crosspoint Reader approach: plain WiFi.begin() without forcing auth/PMF/BSSID.
-  // This avoids forcing the station into an incompatible config for mixed-mode networks.
   WiFi.setSleep(false);
   WiFi.disconnect(true);
   delay(100);
@@ -329,15 +491,61 @@ void UIManager::trySyncTimeFromNtp() {
   }
 
   Serial.printf("UIManager: WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
-  configTime((long)gmtOffset, (int)daylightOffset, "pool.ntp.org", "time.nist.gov", "time.google.com");
 
-  struct tm tmNow;
-  if (getLocalTime(&tmNow, 6000)) {
+  const int64_t kMinEpoch2026 = 1767225600LL;
+  const int64_t kMaxEpoch = 2147483647LL;
+  int64_t minEpoch = kMinEpoch2026;
+  int64_t buildEpoch = computeBuildEpochUtc();
+  if (buildEpoch > 0) {
+    int64_t floorEpoch = buildEpoch - 86400LL;
+    if (floorEpoch > minEpoch) {
+      minEpoch = floorEpoch;
+    }
+  }
+  if (g_lastGoodEpochSec > 0) {
+    int64_t floorEpoch = g_lastGoodEpochSec - 60LL;
+    if (floorEpoch > minEpoch) {
+      minEpoch = floorEpoch;
+    }
+  }
+
+  bool gotValidTime = false;
+  int64_t epochSec = 0;
+
+  const char* servers[3] = {"pool.ntp.org", "time.google.com", "time.nist.gov"};
+  for (int attempt = 0; attempt < 6 && !gotValidTime; ++attempt) {
+    for (int s = 0; s < 3 && !gotValidTime; ++s) {
+      int64_t epoch = 0;
+      if (queryNtpUnixEpoch(servers[s], 2500, epoch)) {
+        Serial.printf("UIManager: NTP reply from %s epoch=%lld min=%lld\n", servers[s], (long long)epoch,
+                      (long long)minEpoch);
+        if (epoch >= minEpoch && epoch <= kMaxEpoch) {
+          epochSec = epoch;
+          gotValidTime = true;
+          break;
+        }
+      }
+    }
+    if (!gotValidTime) {
+      delay(500);
+    }
+  }
+
+  if (gotValidTime) {
+    int64_t localSec = epochSec + (int64_t)gmtOffset + (int64_t)daylightOffset;
+    int32_t minutes = (int32_t)(localSec / 60);
+    int32_t dayMinutes = minutes % (24 * 60);
+    if (dayMinutes < 0)
+      dayMinutes += (24 * 60);
+    int hour = (int)(dayMinutes / 60);
+    int minute = (int)(dayMinutes % 60);
+
+    setClockHM(hour, minute);
     ntpTimeValid = true;
-    Serial.printf("UIManager: NTP time synced: %04d-%02d-%02d %02d:%02d:%02d\n",
-                  tmNow.tm_year + 1900, tmNow.tm_mon + 1, tmNow.tm_mday, tmNow.tm_hour, tmNow.tm_min, tmNow.tm_sec);
+    g_lastGoodEpochSec = epochSec;
+    Serial.printf("UIManager: NTP time synced (epoch=%lld)\n", (long long)epochSec);
   } else {
-    Serial.println("UIManager: NTP sync failed (getLocalTime timeout)");
+    Serial.println("UIManager: NTP sync failed (invalid time)");
     ntpTimeValid = false;
   }
 
@@ -362,6 +570,9 @@ bool UIManager::clearEpubCache() {
 
 void UIManager::showScreen(ScreenId id) {
   // Directly show the requested screen (assumed present)
+  if (id == ScreenId::Settings && currentScreen != ScreenId::Settings) {
+    settingsReturnScreen = currentScreen;
+  }
   previousScreen = currentScreen;
   currentScreen = id;
   // Call activate so screens can perform any work needed when they become

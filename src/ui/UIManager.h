@@ -63,6 +63,9 @@ class UIManager {
   void trySyncTimeFromNtp();
 
  private:
+  static void ntpSyncTaskTrampoline(void* param);
+  void startAutoNtpSyncIfEnabled();
+
   EInkDisplay& display;
   SDCardManager& sdManager;
   TextRenderer textRenderer;
@@ -73,8 +76,12 @@ class UIManager {
 
   bool ntpTimeValid = false;
 
+  bool ntpSyncInProgress = false;
+  TaskHandle_t ntpSyncTaskHandle = nullptr;
+
   ScreenId currentScreen = ScreenId::FileBrowser;
   ScreenId previousScreen = ScreenId::FileBrowser;
+  ScreenId settingsReturnScreen = ScreenId::FileBrowser;
 
   // Map holding owning pointers to the screens; screens are
   // constructed in the .cpp ctor and live for the UIManager lifetime.
@@ -98,6 +105,10 @@ class UIManager {
 
   ScreenId getPreviousScreen() const {
     return previousScreen;
+  }
+
+  ScreenId getSettingsReturnScreen() const {
+    return settingsReturnScreen;
   }
 };
 

@@ -25,7 +25,7 @@ void SettingsScreen::handleButtons(Buttons& buttons) {
   if (buttons.isPressed(Buttons::BACK)) {
     saveSettings();
     // Return to the screen we came from
-    uiManager.showScreen(uiManager.getPreviousScreen());
+    uiManager.showScreen(uiManager.getSettingsReturnScreen());
   } else if (buttons.isPressed(Buttons::LEFT)) {
     selectNext();
   } else if (buttons.isPressed(Buttons::RIGHT)) {
