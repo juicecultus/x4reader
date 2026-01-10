@@ -6,8 +6,6 @@
 #include <WiFi.h>
 #include <time.h>
 
-#include <esp_wifi.h>
-
 #include <esp_system.h>
 
 #include "core/ImageDecoder.h"
@@ -309,101 +307,14 @@ void UIManager::trySyncTimeFromNtp() {
   (void)settings->getInt(String("wifi.daylightOffset"), daylightOffset);
 
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(true);
-
-  // Eero (and other mesh APs) can advertise multiple BSSIDs for the same SSID across bands.
-  // On ESP32-C3 we've observed crashes in the WPA3/SAE path; to avoid this we scan and pin a
-  // WPA2 BSSID on 2.4GHz (channel <= 14) when available.
-  bool havePinnedBssid = false;
-  uint8_t pinnedBssid[6] = {0};
-  uint8_t pinnedChannel = 0;
-  {
-    int n = WiFi.scanNetworks(false, true);
-    Serial.printf("UIManager: scanNetworks found %d\n", n);
-
-    // Prefer WPA2 on 2.4GHz.
-    for (int i = 0; i < n; ++i) {
-      if (WiFi.SSID(i) != ssid)
-        continue;
-
-      int ch = WiFi.channel(i);
-      wifi_auth_mode_t auth = WiFi.encryptionType(i);
-      const uint8_t* bssid = WiFi.BSSID(i);
-
-      Serial.printf("UIManager: candidate ssid='%s' ch=%d auth=%d bssid=%02X:%02X:%02X:%02X:%02X:%02X\n",
-                    ssid.c_str(), ch, (int)auth,
-                    bssid ? bssid[0] : 0, bssid ? bssid[1] : 0, bssid ? bssid[2] : 0,
-                    bssid ? bssid[3] : 0, bssid ? bssid[4] : 0, bssid ? bssid[5] : 0);
-
-      if (ch > 0 && ch <= 14 && auth == WIFI_AUTH_WPA2_PSK && bssid) {
-        memcpy(pinnedBssid, bssid, 6);
-        pinnedChannel = (uint8_t)ch;
-        havePinnedBssid = true;
-        break;
-      }
-    }
-
-    // Fallback: any WPA2 candidate (even if channel unknown).
-    if (!havePinnedBssid) {
-      for (int i = 0; i < n; ++i) {
-        if (WiFi.SSID(i) != ssid)
-          continue;
-        wifi_auth_mode_t auth = WiFi.encryptionType(i);
-        const uint8_t* bssid = WiFi.BSSID(i);
-        int ch = WiFi.channel(i);
-        if (auth == WIFI_AUTH_WPA2_PSK && bssid) {
-          memcpy(pinnedBssid, bssid, 6);
-          pinnedChannel = (ch > 0 && ch <= 255) ? (uint8_t)ch : 0;
-          havePinnedBssid = true;
-          break;
-        }
-      }
-    }
-
-    WiFi.scanDelete();
-  }
-
-  if (!havePinnedBssid) {
-    Serial.printf("UIManager: No WPA2 BSSID found for '%s'. This SSID may be WPA3-only/transition.\n", ssid.c_str());
-    Serial.println("UIManager: On eero, try enabling Guest network and set it to WPA2 if possible.");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return;
-  }
+  // Match the working Crosspoint Reader approach: plain WiFi.begin() without forcing auth/PMF/BSSID.
+  // This avoids forcing the station into an incompatible config for mixed-mode networks.
+  WiFi.setSleep(false);
+  WiFi.disconnect(true);
+  delay(100);
 
   Serial.printf("UIManager: WiFi connecting to '%s'...\n", ssid.c_str());
-
-  // Connect using esp-idf config to force WPA2-only and avoid WPA3/SAE crashes.
-  // This also prevents PMF from being required (some APs can misbehave).
-  wifi_config_t cfg;
-  memset(&cfg, 0, sizeof(cfg));
-  strncpy((char*)cfg.sta.ssid, ssid.c_str(), sizeof(cfg.sta.ssid) - 1);
-  strncpy((char*)cfg.sta.password, pass.c_str(), sizeof(cfg.sta.password) - 1);
-  cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-  cfg.sta.pmf_cfg.capable = false;
-  cfg.sta.pmf_cfg.required = false;
-  cfg.sta.bssid_set = 1;
-  memcpy(cfg.sta.bssid, pinnedBssid, 6);
-  cfg.sta.channel = pinnedChannel;
-
-  Serial.printf("UIManager: pinning BSSID %02X:%02X:%02X:%02X:%02X:%02X ch=%d\n",
-                pinnedBssid[0], pinnedBssid[1], pinnedBssid[2], pinnedBssid[3], pinnedBssid[4], pinnedBssid[5],
-                (int)pinnedChannel);
-
-  esp_err_t rc = esp_wifi_set_config(WIFI_IF_STA, &cfg);
-  if (rc != ESP_OK) {
-    Serial.printf("UIManager: esp_wifi_set_config failed rc=%d\n", (int)rc);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return;
-  }
-  rc = esp_wifi_connect();
-  if (rc != ESP_OK) {
-    Serial.printf("UIManager: esp_wifi_connect failed rc=%d\n", (int)rc);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return;
-  }
+  WiFi.begin(ssid.c_str(), pass.c_str());
 
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - start) < 8000) {
