@@ -233,14 +233,35 @@ void TextViewerScreen::showPage() {
     textRenderer.setFontFamily(getCurrentFontFamily());
     textRenderer.setFontStyle(FontStyle::ITALIC);
 
-    const char* msg = "No document open";
+    String msgStr = noDocumentMessage;
+    if (msgStr.length() == 0) {
+      msgStr = String("No document open");
+    }
+
+    int newlineIdx = msgStr.indexOf('\n');
+    String line1 = (newlineIdx >= 0) ? msgStr.substring(0, newlineIdx) : msgStr;
+    String line2 = (newlineIdx >= 0) ? msgStr.substring(newlineIdx + 1) : String("");
+
     int16_t x1, y1;
-    uint16_t w, h;
-    textRenderer.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
-    int16_t centerX = (layoutConfig.pageWidth - (int)w) / 2;
-    int16_t centerY = (layoutConfig.pageHeight - (int)h) / 2;
-    textRenderer.setCursor(centerX, centerY);
-    textRenderer.print(msg);
+    uint16_t w1, h1;
+    textRenderer.getTextBounds(line1.c_str(), 0, 0, &x1, &y1, &w1, &h1);
+    uint16_t w2 = 0, h2 = 0;
+    if (line2.length() > 0) {
+      textRenderer.getTextBounds(line2.c_str(), 0, 0, &x1, &y1, &w2, &h2);
+    }
+
+    int16_t centerX1 = (layoutConfig.pageWidth - (int)w1) / 2;
+    int16_t centerX2 = (layoutConfig.pageWidth - (int)w2) / 2;
+    const int16_t lineGap = 8;
+    int16_t totalH = (int16_t)h1 + (line2.length() > 0 ? (int16_t)(lineGap + h2) : 0);
+    int16_t startY = (layoutConfig.pageHeight - totalH) / 2;
+
+    textRenderer.setCursor(centerX1, startY);
+    textRenderer.print(line1);
+    if (line2.length() > 0) {
+      textRenderer.setCursor(centerX2, startY + (int16_t)h1 + lineGap);
+      textRenderer.print(line2);
+    }
     display.displayBuffer(EInkDisplay::FAST_REFRESH);
     return;
   }
@@ -511,6 +532,7 @@ void TextViewerScreen::openFile(const String& sdPath) {
   // Use a buffered file-backed provider to avoid allocating the entire file in RAM.
   delete provider;
   provider = nullptr;
+  noDocumentMessage = String("");
   currentFilePath = sdPath;
   pageRenderCounter = 0;
 
@@ -534,7 +556,7 @@ void TextViewerScreen::openFile(const String& sdPath) {
       Serial.printf("TextViewerScreen: failed to open EPUB %s\n", sdPath.c_str());
       delete ep;
       currentFilePath = String("");
-      showErrorMessage("Failed to open EPUB");
+      noDocumentMessage = String("Unable to open epub\n(please reboot and try again)");
       return;
     }
     provider = ep;
