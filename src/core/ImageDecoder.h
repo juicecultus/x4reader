@@ -28,6 +28,8 @@ public:
         bool rotateSource90;
         bool scaleToWidth;
         int16_t* errorBuf;
+        uint16_t* pngLineBuf;
+        size_t pngLineBufPixels;
         bool success;
     };
     /**

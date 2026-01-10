@@ -1,5 +1,6 @@
 #include "ImageDecoder.h"
-#include <vector>
+
+#include <new>
 
 static const char* pngErrName(int err) {
     switch (err) {
@@ -131,8 +132,12 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
     const uint32_t bytesPerPixel = (uint32_t)(bpp / 8);
     const uint32_t rowStride = (uint32_t)(((uint32_t)bmpW * bytesPerPixel + 3) & ~3U);
 
-    std::vector<uint8_t> row;
-    row.resize(rowStride);
+    uint8_t* row = (uint8_t*)malloc(rowStride);
+    if (!row) {
+        Serial.println("ImageDecoder: BMP OOM allocating row buffer");
+        f.close();
+        return false;
+    }
 
     if (!ctx->scaleToWidth) {
         for (int32_t y = 0; y < absH; y++) {
@@ -144,9 +149,10 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
                 return false;
             }
 
-            const int32_t r = (int32_t)f.read(row.data(), row.size());
-            if (r != (int32_t)row.size()) {
-                Serial.printf("ImageDecoder: BMP short read row %ld got=%ld need=%lu\n", (long)y, (long)r, (unsigned long)row.size());
+            const int32_t r = (int32_t)f.read(row, rowStride);
+            if (r != (int32_t)rowStride) {
+                Serial.printf("ImageDecoder: BMP short read row %ld got=%ld need=%lu\n", (long)y, (long)r, (unsigned long)rowStride);
+                free(row);
                 f.close();
                 return false;
             }
@@ -202,9 +208,10 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
                 return false;
             }
 
-            const int32_t r = (int32_t)f.read(row.data(), row.size());
-            if (r != (int32_t)row.size()) {
-                Serial.printf("ImageDecoder: BMP short read scaled row %d got=%ld need=%lu\n", dy, (long)r, (unsigned long)row.size());
+            const int32_t r = (int32_t)f.read(row, rowStride);
+            if (r != (int32_t)rowStride) {
+                Serial.printf("ImageDecoder: BMP short read scaled row %d got=%ld need=%lu\n", dy, (long)r, (unsigned long)rowStride);
+                free(row);
                 f.close();
                 return false;
             }
@@ -241,6 +248,7 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
         }
     }
 
+    free(row);
     f.close();
     return true;
 }
@@ -249,10 +257,17 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
     String p = String(path);
     p.toLowerCase();
 
-    // Allocate everything on heap to keep stack usage minimal
-    std::vector<int16_t> errorBuffer(targetWidth * 2, 0);
-    DecodeContext* ctx = new DecodeContext();
-    if (!ctx) return false;
+    // Avoid std::vector here: it can throw std::bad_alloc which will panic on-device.
+    int16_t* errorBuffer = (int16_t*)calloc((size_t)targetWidth * 2, sizeof(int16_t));
+    if (!errorBuffer) {
+        Serial.println("ImageDecoder: OOM allocating error buffer");
+        return false;
+    }
+    DecodeContext* ctx = new (std::nothrow) DecodeContext();
+    if (!ctx) {
+        free(errorBuffer);
+        return false;
+    }
 
     ctx->bbep = bbep;
     ctx->frameBuffer = frameBuffer;
@@ -266,13 +281,16 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
     ctx->renderHeight = 0;
     ctx->rotateSource90 = false;
     ctx->scaleToWidth = false;
-    ctx->errorBuf = errorBuffer.data();
+    ctx->errorBuf = errorBuffer;
+    ctx->pngLineBuf = nullptr;
+    ctx->pngLineBufPixels = 0;
     ctx->success = false;
     g_ctx = ctx;
 
     if (p.endsWith(".jpg") || p.endsWith(".jpeg")) {
-        JPEGDEC* jpeg = new JPEGDEC();
+        JPEGDEC* jpeg = new (std::nothrow) JPEGDEC();
         if (!jpeg) {
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -281,6 +299,7 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         if (!f) {
             Serial.printf("ImageDecoder: Failed to open %s\n", path);
             delete jpeg;
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -391,8 +410,9 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         f.close();
         delete jpeg;
     } else if (p.endsWith(".png")) {
-        PNG* png = new PNG();
+        PNG* png = new (std::nothrow) PNG();
         if (!png) {
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -422,14 +442,17 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         }
 
         int rc = png->open(path, [](const char *szFilename, int32_t *pFileSize) -> void * {
-            File *file = new File(SD.open(szFilename));
+            File *file = new (std::nothrow) File(SD.open(szFilename));
             if (file && *file) {
                 file->seek(0);
                 *pFileSize = (int32_t)file->size();
                 Serial.printf("ImageDecoder: PNG open %s size=%ld\n", szFilename, (long)*pFileSize);
                 return (void *)file;
             }
-            if (file) delete file;
+            if (file) {
+                file->close();
+                delete file;
+            }
             return NULL;
         }, [](void *pHandle) {
             File *file = (File *)pHandle;
@@ -610,6 +633,7 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
     }
 
     bool result = ctx->success;
+    free(errorBuffer);
     delete ctx;
     g_ctx = nullptr;
     return result;
@@ -619,9 +643,16 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
     String p = String(path);
     p.toLowerCase();
 
-    std::vector<int16_t> errorBuffer(targetWidth * 2, 0);
-    DecodeContext* ctx = new DecodeContext();
-    if (!ctx) return false;
+    int16_t* errorBuffer = (int16_t*)calloc((size_t)targetWidth * 2, sizeof(int16_t));
+    if (!errorBuffer) {
+        Serial.println("ImageDecoder: OOM allocating error buffer (fitWidth)");
+        return false;
+    }
+    DecodeContext* ctx = new (std::nothrow) DecodeContext();
+    if (!ctx) {
+        free(errorBuffer);
+        return false;
+    }
 
     ctx->bbep = bbep;
     ctx->frameBuffer = frameBuffer;
@@ -635,15 +666,18 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
     ctx->renderHeight = 0;
     ctx->rotateSource90 = false;
     ctx->scaleToWidth = true;
-    ctx->errorBuf = errorBuffer.data();
+    ctx->errorBuf = errorBuffer;
+    ctx->pngLineBuf = nullptr;
+    ctx->pngLineBufPixels = 0;
     ctx->success = false;
     g_ctx = ctx;
 
     if (p.endsWith(".bmp")) {
         ctx->success = decodeBMPToDisplay(path, ctx);
     } else if (p.endsWith(".jpg") || p.endsWith(".jpeg")) {
-        JPEGDEC* jpeg = new JPEGDEC();
+        JPEGDEC* jpeg = new (std::nothrow) JPEGDEC();
         if (!jpeg) {
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -652,6 +686,7 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
         if (!f) {
             Serial.printf("ImageDecoder: Failed to open %s\n", path);
             delete jpeg;
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -724,8 +759,9 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
         f.close();
         delete jpeg;
     } else if (p.endsWith(".png")) {
-        PNG* png = new PNG();
+        PNG* png = new (std::nothrow) PNG();
         if (!png) {
+            free(errorBuffer);
             delete ctx;
             g_ctx = nullptr;
             return false;
@@ -733,13 +769,16 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
         currentPNG = png;
 
         int rc = png->open(path, [](const char *szFilename, int32_t *pFileSize) -> void * {
-            File *file = new File(SD.open(szFilename));
+            File *file = new (std::nothrow) File(SD.open(szFilename));
             if (file && *file) {
                 file->seek(0);
                 *pFileSize = (int32_t)file->size();
                 return (void *)file;
             }
-            if (file) delete file;
+            if (file) {
+                file->close();
+                delete file;
+            }
             return NULL;
         }, [](void *pHandle) {
             File *file = (File *)pHandle;
@@ -878,6 +917,7 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
     }
 
     bool result = ctx->success;
+    free(errorBuffer);
     delete ctx;
     g_ctx = nullptr;
     return result;
@@ -886,7 +926,6 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
 int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     if (!pDraw || !g_ctx || !pDraw->pPixels) return 0;
     DecodeContext *ctx = g_ctx; 
-    
     if (!ctx->bbep) return 0;
 
     // NOTE: JPEGDEC invokes this callback in MCU blocks, not strict scanlines.
