@@ -9,6 +9,7 @@
 #include "core/Buttons.h"
 #include "core/EInkDisplay.h"
 #include "core/SDCardManager.h"
+#include "core/Settings.h"
 #include "rendering/SimpleFont.h"
 #include "resources/fonts/FontDefinitions.h"
 #include "resources/fonts/other/MenuFontSmall.h"
@@ -42,6 +43,28 @@ SDCardManager sdManager(EPD_SCLK, SD_SPI_MISO, EPD_MOSI, SD_SPI_CS, EINK_SPI_CS)
 #define BAT_GPIO0 0
 BatteryMonitor g_battery(BAT_GPIO0);
 UIManager* uiManager = nullptr;
+
+static unsigned long getSleepTimeoutMs() {
+  // 0=1 min, 1=5 min, 2=10 min, 3=15 min, 4=30 min
+  int idx = 2;
+  if (uiManager) {
+    Settings& s = uiManager->getSettings();
+    (void)s.getInt(String("settings.sleepTimeout"), idx);
+  }
+  switch (idx) {
+    case 0:
+      return 1UL * 60UL * 1000UL;
+    case 1:
+      return 5UL * 60UL * 1000UL;
+    case 2:
+    default:
+      return 10UL * 60UL * 1000UL;
+    case 3:
+      return 15UL * 60UL * 1000UL;
+    case 4:
+      return 30UL * 60UL * 1000UL;
+  }
+}
 
 // Button update task - runs continuously to keep button state fresh
 void buttonUpdateTask(void* parameter) {
@@ -198,6 +221,20 @@ void loop() {
   // Button state is updated by background task
   if (uiManager)
     uiManager->handleButtons(buttons);
+
+  // Auto-sleep after inactivity (skip when USB is connected)
+  static unsigned long lastActivityTime = millis();
+  if (buttons.wasAnyPressed() || buttons.wasAnyReleased()) {
+    lastActivityTime = millis();
+  }
+  if (!isUsbConnected()) {
+    const unsigned long sleepTimeoutMs = getSleepTimeoutMs();
+    if (millis() - lastActivityTime >= sleepTimeoutMs) {
+      Serial.printf("[%lu] Auto-sleep triggered after %lu ms of inactivity\n", millis(), sleepTimeoutMs);
+      enterDeepSleep();
+      return;
+    }
+  }
 
   // Check for power button press to enter sleep
   if (buttons.isPowerButtonDown()) {

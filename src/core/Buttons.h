@@ -17,6 +17,9 @@ class Buttons {
   bool wasReleased(uint8_t buttonIndex);               // Was button just released this frame?
   unsigned long getHoldDuration(uint8_t buttonIndex);  // How long button has been held (ms)
 
+  bool wasAnyPressed();
+  bool wasAnyReleased();
+
   // Button indices
   static const uint8_t BACK = 0;
   static const uint8_t CONFIRM = 1;

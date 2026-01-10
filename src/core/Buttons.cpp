@@ -109,6 +109,14 @@ bool Buttons::wasReleased(uint8_t buttonIndex) {
   return !(currentState & mask) && (previousState & mask);
 }
 
+bool Buttons::wasAnyPressed() {
+  return (currentState & ~previousState) != 0;
+}
+
+bool Buttons::wasAnyReleased() {
+  return (~currentState & previousState) != 0;
+}
+
 const char* Buttons::getButtonName(uint8_t buttonIndex) {
   if (buttonIndex <= POWER) {
     return BUTTON_NAMES[buttonIndex];

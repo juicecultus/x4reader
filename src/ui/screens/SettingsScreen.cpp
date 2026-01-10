@@ -152,20 +152,25 @@ void SettingsScreen::toggleCurrentSetting() {
       if (orientationIndex >= 4)
         orientationIndex = 0;
       break;
-    case 9:  // Clock
+    case 9:  // Time to Sleep
+      sleepTimeoutIndex++;
+      if (sleepTimeoutIndex >= 5)
+        sleepTimeoutIndex = 0;
+      break;
+    case 10:  // Clock
       saveSettings();
       uiManager.showScreen(UIManager::ScreenId::ClockSettings);
       return;
       break;
-    case 10:  // WiFi Setup
+    case 11:  // WiFi Setup
       saveSettings();
       uiManager.showScreen(UIManager::ScreenId::WifiSettings);
       return;
       break;
-    case 11:  // Clear Cache
+    case 12:  // Clear Cache
       clearCacheStatus = uiManager.clearEpubCache() ? 1 : 0;
       break;
-    case 12:  // TOC
+    case 13:  // TOC
       saveSettings();
       uiManager.showScreen(UIManager::ScreenId::Chapters);
       return;
@@ -242,6 +247,12 @@ void SettingsScreen::loadSettings() {
     orientationIndex = orientation;
   }
 
+  // Load time to sleep (0=1 min, 1=5 min, 2=10 min, 3=15 min, 4=30 min)
+  int sleepTimeout = 2;
+  if (s.getInt(String("settings.sleepTimeout"), sleepTimeout)) {
+    sleepTimeoutIndex = sleepTimeout;
+  }
+
   // Apply the loaded font settings
   applyFontSettings();
   applyUIFontSettings();
@@ -259,6 +270,7 @@ void SettingsScreen::saveSettings() {
   s.setInt(String("settings.uiFontSize"), uiFontSizeIndex);
   s.setInt(String("settings.randomSleepCover"), randomSleepCoverIndex);
   s.setInt(String("settings.orientation"), orientationIndex);
+  s.setInt(String("settings.sleepTimeout"), sleepTimeoutIndex);
 
   if (!s.save()) {
     Serial.println("SettingsScreen: Failed to write settings.cfg");
@@ -286,12 +298,14 @@ String SettingsScreen::getSettingName(int index) {
     case 8:
       return "Orientation";
     case 9:
-      return "Clock";
+      return "Time to Sleep";
     case 10:
-      return "WiFi";
+      return "Clock";
     case 11:
-      return "Clear Cache";
+      return "WiFi";
     case 12:
+      return "Clear Cache";
+    case 13:
       return "TOC";
     default:
       return "";
@@ -355,14 +369,29 @@ String SettingsScreen::getSettingValue(int index) {
           return "Portrait";
       }
     case 9:
-      return "Setup";
+      switch (sleepTimeoutIndex) {
+        case 0:
+          return "1 min";
+        case 1:
+          return "5 min";
+        case 2:
+          return "10 min";
+        case 3:
+          return "15 min";
+        case 4:
+          return "30 min";
+        default:
+          return "10 min";
+      }
     case 10:
       return "Setup";
     case 11:
+      return "Setup";
+    case 12:
       if (clearCacheStatus < 0)
         return "Press";
       return clearCacheStatus ? "OK" : "FAIL";
-    case 12:
+    case 13:
       return "Open";
     default:
       return "";
