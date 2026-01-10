@@ -225,6 +225,13 @@ void FileBrowserScreen::loadFolder(int maxFiles) {
     auto files = sdManager.listFiles(dir, maxFiles);
     Serial.printf("FileBrowserScreen: Found %d files in %s\n", (int)files.size(), dir);
     for (auto& name : files) {
+      String lf = name;
+      lf.toLowerCase();
+      int lastSlashInName = lf.lastIndexOf('/');
+      String base = (lastSlashInName >= 0) ? lf.substring(lastSlashInName + 1) : lf;
+      if (base.startsWith("._")) {
+        continue;
+      }
       String fullPath = String(dir) + "/" + name;
       // Include .txt and .epub files (case-insensitive)
       if (name.length() >= 4) {
