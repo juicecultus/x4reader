@@ -146,6 +146,33 @@ void TextViewerScreen::activate() {
   if (pendingOpenPath.length() > 0 && currentFilePath.length() == 0) {
     String toOpen = pendingOpenPath;
     pendingOpenPath = String("");
+
+    // Provide immediate feedback while the book is (re)opening.
+    display.clearScreen(0xFF);
+    textRenderer.setFrameBuffer(display.getFrameBuffer());
+    textRenderer.setBitmapType(TextRenderer::BITMAP_BW);
+    textRenderer.setTextColor(TextRenderer::COLOR_BLACK);
+    textRenderer.setFont(getMainFont());
+    {
+      const char* l1 = "Loading...";
+      const char* l2 = "(please wait)";
+      int16_t x1, y1;
+      uint16_t w1, h1;
+      uint16_t w2, h2;
+      textRenderer.getTextBounds(l1, 0, 0, &x1, &y1, &w1, &h1);
+      textRenderer.getTextBounds(l2, 0, 0, &x1, &y1, &w2, &h2);
+      const int16_t lineGap = 8;
+      int16_t totalH = (int16_t)h1 + lineGap + (int16_t)h2;
+      int16_t startY = (800 - totalH) / 2;
+      int16_t cx1 = (480 - (int)w1) / 2;
+      int16_t cx2 = (480 - (int)w2) / 2;
+      textRenderer.setCursor(cx1, startY);
+      textRenderer.print(l1);
+      textRenderer.setCursor(cx2, startY + (int16_t)h1 + lineGap);
+      textRenderer.print(l2);
+    }
+    display.displayBuffer(EInkDisplay::FAST_REFRESH);
+
     openFile(toOpen);
   }
 }
