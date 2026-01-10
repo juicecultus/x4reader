@@ -12,6 +12,7 @@
 #include "../../content/providers/StringWordProvider.h"
 
 #include "../../content/epub/epub_parser.h"
+#include "../../core/ImageDecoder.h"
 #include "../../core/Buttons.h"
 #include "../../core/SDCardManager.h"
 #include "../../core/Settings.h"
@@ -55,6 +56,7 @@ void TextViewerScreen::closeDocument() {
   loadedText = String("");
   currentFilePath = String("");
   noDocumentMessage = String("");
+  showingCoverImage = false;
   epub_release_shared_buffers();
 }
 
@@ -306,6 +308,38 @@ void TextViewerScreen::showPage() {
   pageStartIndex = provider->getCurrentIndex();
   pageEndIndex = layout.endPosition;
 
+  // If the first spine item is an image-only cover XHTML, layout may produce no
+  // drawable words. In that case, render the extracted cover image instead.
+  if (!showingCoverImage && provider->hasChapters() && provider->getCurrentChapter() == 0 && pageStartIndex == 0) {
+    bool hasDrawableText = false;
+    for (const auto& line : layout.lines) {
+      for (const auto& w : line.words) {
+        if (w.text.length() > 0 && w.text != " ") {
+          hasDrawableText = true;
+          break;
+        }
+      }
+      if (hasDrawableText)
+        break;
+    }
+
+    if (!hasDrawableText) {
+      String coverPath = provider->getCoverImagePath();
+      if (coverPath.length() > 0 && SD.exists(coverPath.c_str())) {
+        const uint32_t freeHeap = ESP.getFreeHeap();
+        if (freeHeap >= 60000) {
+          sdManager.ensureSpiBusIdle();
+          display.clearScreen(0xFF);
+          if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+            showingCoverImage = true;
+            display.displayBuffer(EInkDisplay::FAST_REFRESH);
+            return;
+          }
+        }
+      }
+    }
+  }
+
   unsigned long renderStart = millis();
 
   // Render to BW buffer
@@ -410,6 +444,18 @@ void TextViewerScreen::showPage() {
 void TextViewerScreen::nextPage() {
   if (!provider)
     return;
+
+  if (showingCoverImage) {
+    showingCoverImage = false;
+    if (provider->hasChapters() && provider->getChapterCount() > 1) {
+      provider->setChapter(1);
+      pageStartIndex = 0;
+      pageEndIndex = 0;
+      provider->setPosition(0);
+    }
+    showPage();
+    return;
+  }
 
   // Check if there are more words in current chapter (use chapter percentage, not book percentage)
   if (provider->getChapterPercentage(pageEndIndex) < 10000) {
@@ -553,6 +599,7 @@ void TextViewerScreen::openFile(const String& sdPath) {
   delete provider;
   provider = nullptr;
   noDocumentMessage = String("");
+  showingCoverImage = false;
   currentFilePath = sdPath;
   pageRenderCounter = 0;
 

@@ -113,6 +113,12 @@ class WordProvider {
     return String("");
   }
 
+  // If the provider has an associated cover image (e.g. EPUB), return the SD path
+  // to the extracted cover image. Default is empty.
+  virtual String getCoverImagePath() {
+    return String("");
+  }
+
   // Style support - returns the currently active style for styling words
   // The default implementation returns a default style (left-aligned)
   virtual CssStyle getCurrentStyle() {
