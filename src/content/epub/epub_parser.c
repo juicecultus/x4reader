@@ -36,8 +36,16 @@ extern void arduino_log_memory(const char* msg);
 
 /* Static decompression buffers to avoid repeated allocations */
 #ifdef USE_ARDUINO_FILE
-static uint8_t* g_decomp_buffer = NULL;
-static size_t g_decomp_buffer_size = 0;
+// Use a fixed static buffer to avoid heap fragmentation issues. Some workflows
+// (e.g. entering/exiting deep sleep) can leave the heap too fragmented to
+// satisfy the ~32KB+ contiguous allocation required by DEFLATE.
+//
+// We cap the internal compressed input chunk to keep the static buffer small.
+// Larger chunk sizes are automatically reduced to this cap.
+#define EPUB_STATIC_CHUNK_SIZE (2048)
+#define EPUB_STATIC_TOTAL_SIZE (sizeof(tinfl_decompressor) + EPUB_STATIC_CHUNK_SIZE + TINFL_LZ_DICT_SIZE)
+static uint8_t g_decomp_buffer[EPUB_STATIC_TOTAL_SIZE];
+static int g_decomp_buffer_in_use = 0;
 #endif
 
 /* File operation wrappers for Arduino compatibility */
@@ -391,6 +399,12 @@ epub_error epub_extract_streaming(epub_reader* reader, uint32_t file_index, epub
     chunk_size = DEFAULT_CHUNK_SIZE;
   }
 
+#ifdef USE_ARDUINO_FILE
+  if (chunk_size > EPUB_STATIC_CHUNK_SIZE) {
+    chunk_size = EPUB_STATIC_CHUNK_SIZE;
+  }
+#endif
+
   file_entry* entry = &reader->files[file_index];
 
 #ifdef USE_ARDUINO_FILE
@@ -462,6 +476,9 @@ epub_error epub_extract_streaming(epub_reader* reader, uint32_t file_index, epub
   } else if (entry->compression == 8) {
     /* DEFLATE compression - use tinfl with dictionary */
 #ifdef USE_ARDUINO_FILE
+    if (chunk_size > EPUB_STATIC_CHUNK_SIZE) {
+      chunk_size = EPUB_STATIC_CHUNK_SIZE;
+    }
     size_t total_size = sizeof(tinfl_decompressor) + chunk_size + TINFL_LZ_DICT_SIZE;
     {
       char msg[128];
@@ -474,44 +491,17 @@ epub_error epub_extract_streaming(epub_reader* reader, uint32_t file_index, epub
     printf("  [MEM] epub_start_streaming: attempting alloc total_size=%u\n", (unsigned)total_size);
 #endif
     uint8_t* memory_block = NULL;
-
 #ifdef USE_ARDUINO_FILE
-    /* Reuse global buffer to avoid fragmentation */
-    if (g_decomp_buffer && g_decomp_buffer_size >= total_size) {
-      memory_block = g_decomp_buffer;
-    } else {
-      /* Free old buffer if exists */
-      if (g_decomp_buffer) {
-        free(g_decomp_buffer);
-        g_decomp_buffer = NULL;
-      }
-
-      memory_block = (uint8_t*)malloc(total_size);
-
-      if (!memory_block) {
-        g_decomp_buffer = NULL;
-        g_decomp_buffer_size = 0;
-        return EPUB_ERROR_OUT_OF_MEMORY;
-      }
-
-      g_decomp_buffer = memory_block;
-      g_decomp_buffer_size = total_size;
+    if (total_size > EPUB_STATIC_TOTAL_SIZE) {
+      return EPUB_ERROR_OUT_OF_MEMORY;
     }
+    memory_block = g_decomp_buffer;
 #else
     memory_block = (uint8_t*)malloc(total_size);
     if (!memory_block) {
       return EPUB_ERROR_OUT_OF_MEMORY;
     }
-#ifdef USE_ARDUINO_FILE
-    {
-      char msg[128];
-      snprintf(msg, sizeof(msg), "  [MEM] epub_extract_streaming: allocated memory_block total_size=%u, Free=%d\n",
-               (unsigned)total_size, arduino_get_free_heap());
-      arduino_log_memory(msg);
-    }
-#else
     printf("  [MEM] epub_extract_streaming: allocated memory_block total_size=%u\n", (unsigned)total_size);
-#endif
 #endif
 
     /* Partition the block */
@@ -580,7 +570,7 @@ epub_error epub_extract_streaming(epub_reader* reader, uint32_t file_index, epub
     }
 
 #ifdef USE_ARDUINO_FILE
-    /* Keep buffer allocated for reuse */
+    /* Static buffer - nothing to free */
 #else
     free(memory_block);
 #endif
@@ -599,6 +589,12 @@ epub_stream_context* epub_start_streaming(epub_reader* reader, uint32_t file_ind
   if (chunk_size == 0) {
     chunk_size = DEFAULT_CHUNK_SIZE;
   }
+
+#ifdef USE_ARDUINO_FILE
+  if (chunk_size > EPUB_STATIC_CHUNK_SIZE) {
+    chunk_size = EPUB_STATIC_CHUNK_SIZE;
+  }
+#endif
 
   file_entry* entry = &reader->files[file_index];
 
@@ -665,38 +661,17 @@ epub_stream_context* epub_start_streaming(epub_reader* reader, uint32_t file_ind
     /* DEFLATE - allocate decompression buffers */
     size_t total_size = sizeof(tinfl_decompressor) + chunk_size + TINFL_LZ_DICT_SIZE;
 #ifdef USE_ARDUINO_FILE
-    /* Reuse global buffer if available to reduce fragmentation and memory usage */
-    if (g_decomp_buffer && g_decomp_buffer_size >= total_size) {
-      ctx->memory_block = g_decomp_buffer;
-      ctx->uses_shared_decomp_buffer = 1;
-    } else {
-      /* Free old buffer if exists */
-      if (g_decomp_buffer) {
-        free(g_decomp_buffer);
-        g_decomp_buffer = NULL;
-        g_decomp_buffer_size = 0;
-      }
-
-      ctx->memory_block = (uint8_t*)malloc(total_size);
-      if (!ctx->memory_block) {
-        free(ctx);
-        return NULL;
-      }
-#ifdef USE_ARDUINO_FILE
-      {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "  [MEM] epub_start_streaming: allocated decomp buffer total_size=%u, Free=%d\n",
-                 (unsigned)total_size, arduino_get_free_heap());
-        arduino_log_memory(msg);
-      }
-#else
-      printf("  [MEM] epub_start_streaming: allocated decomp buffer total_size=%u\n", (unsigned)total_size);
-#endif
-      /* Keep as global for future reuse */
-      g_decomp_buffer = ctx->memory_block;
-      g_decomp_buffer_size = total_size;
-      ctx->uses_shared_decomp_buffer = 1;
+    if (total_size > EPUB_STATIC_TOTAL_SIZE) {
+      free(ctx);
+      return NULL;
     }
+    if (g_decomp_buffer_in_use) {
+      free(ctx);
+      return NULL;
+    }
+    ctx->memory_block = g_decomp_buffer;
+    ctx->uses_shared_decomp_buffer = 1;
+    g_decomp_buffer_in_use = 1;
 #else
     ctx->memory_block = (uint8_t*)malloc(total_size);
     if (!ctx->memory_block) {
@@ -877,18 +852,19 @@ int epub_read_chunk(epub_stream_context* ctx, void* buffer, size_t max_size) {
 }
 
 void epub_end_streaming(epub_stream_context* ctx) {
-  if (ctx) {
-    if (ctx->memory_block) {
-#ifdef USE_ARDUINO_FILE
-      if (!ctx->uses_shared_decomp_buffer) {
-        free(ctx->memory_block);
-      }
-#else
-      free(ctx->memory_block);
-#endif
-    }
-    free(ctx);
+  if (!ctx) {
+    return;
   }
+#ifdef USE_ARDUINO_FILE
+  if (ctx->uses_shared_decomp_buffer) {
+    g_decomp_buffer_in_use = 0;
+  }
+#else
+  if (ctx->memory_block) {
+    free(ctx->memory_block);
+  }
+#endif
+  free(ctx);
 }
 
 const char* epub_get_error_string(epub_error error) {
