@@ -311,28 +311,64 @@ void UIManager::trySyncTimeFromNtp() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(true);
 
-  // Guard: ESP32-C3 WPA3/SAE can crash inside esp-idf wpa_supplicant on some APs (e.g. eero).
-  // Refuse to connect if the target SSID reports WPA3 or WPA2/WPA3 transition mode.
+  // Eero (and other mesh APs) can advertise multiple BSSIDs for the same SSID across bands.
+  // On ESP32-C3 we've observed crashes in the WPA3/SAE path; to avoid this we scan and pin a
+  // WPA2 BSSID on 2.4GHz (channel <= 14) when available.
+  bool havePinnedBssid = false;
+  uint8_t pinnedBssid[6] = {0};
+  uint8_t pinnedChannel = 0;
   {
     int n = WiFi.scanNetworks(false, true);
-    wifi_auth_mode_t auth = WIFI_AUTH_OPEN;
-    bool found = false;
+    Serial.printf("UIManager: scanNetworks found %d\n", n);
+
+    // Prefer WPA2 on 2.4GHz.
     for (int i = 0; i < n; ++i) {
-      if (WiFi.SSID(i) == ssid) {
-        auth = WiFi.encryptionType(i);
-        found = true;
+      if (WiFi.SSID(i) != ssid)
+        continue;
+
+      int ch = WiFi.channel(i);
+      wifi_auth_mode_t auth = WiFi.encryptionType(i);
+      const uint8_t* bssid = WiFi.BSSID(i);
+
+      Serial.printf("UIManager: candidate ssid='%s' ch=%d auth=%d bssid=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                    ssid.c_str(), ch, (int)auth,
+                    bssid ? bssid[0] : 0, bssid ? bssid[1] : 0, bssid ? bssid[2] : 0,
+                    bssid ? bssid[3] : 0, bssid ? bssid[4] : 0, bssid ? bssid[5] : 0);
+
+      if (ch > 0 && ch <= 14 && auth == WIFI_AUTH_WPA2_PSK && bssid) {
+        memcpy(pinnedBssid, bssid, 6);
+        pinnedChannel = (uint8_t)ch;
+        havePinnedBssid = true;
         break;
       }
     }
-    WiFi.scanDelete();
 
-    if (found && (auth == WIFI_AUTH_WPA3_PSK || auth == WIFI_AUTH_WPA2_WPA3_PSK)) {
-      Serial.printf("UIManager: Refusing to connect to '%s' (auth=%d) to avoid WPA3/SAE crash.\n", ssid.c_str(), (int)auth);
-      Serial.println("UIManager: Workaround: disable WPA3 on your AP or use a WPA2-only/Guest SSID.");
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
-      return;
+    // Fallback: any WPA2 candidate (even if channel unknown).
+    if (!havePinnedBssid) {
+      for (int i = 0; i < n; ++i) {
+        if (WiFi.SSID(i) != ssid)
+          continue;
+        wifi_auth_mode_t auth = WiFi.encryptionType(i);
+        const uint8_t* bssid = WiFi.BSSID(i);
+        int ch = WiFi.channel(i);
+        if (auth == WIFI_AUTH_WPA2_PSK && bssid) {
+          memcpy(pinnedBssid, bssid, 6);
+          pinnedChannel = (ch > 0 && ch <= 255) ? (uint8_t)ch : 0;
+          havePinnedBssid = true;
+          break;
+        }
+      }
     }
+
+    WiFi.scanDelete();
+  }
+
+  if (!havePinnedBssid) {
+    Serial.printf("UIManager: No WPA2 BSSID found for '%s'. This SSID may be WPA3-only/transition.\n", ssid.c_str());
+    Serial.println("UIManager: On eero, try enabling Guest network and set it to WPA2 if possible.");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    return;
   }
 
   Serial.printf("UIManager: WiFi connecting to '%s'...\n", ssid.c_str());
@@ -346,6 +382,13 @@ void UIManager::trySyncTimeFromNtp() {
   cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
   cfg.sta.pmf_cfg.capable = false;
   cfg.sta.pmf_cfg.required = false;
+  cfg.sta.bssid_set = 1;
+  memcpy(cfg.sta.bssid, pinnedBssid, 6);
+  cfg.sta.channel = pinnedChannel;
+
+  Serial.printf("UIManager: pinning BSSID %02X:%02X:%02X:%02X:%02X:%02X ch=%d\n",
+                pinnedBssid[0], pinnedBssid[1], pinnedBssid[2], pinnedBssid[3], pinnedBssid[4], pinnedBssid[5],
+                (int)pinnedChannel);
 
   esp_err_t rc = esp_wifi_set_config(WIFI_IF_STA, &cfg);
   if (rc != ESP_OK) {
