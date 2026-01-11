@@ -23,6 +23,7 @@
 #include "ui/screens/ChaptersScreen.h"
 #include "ui/screens/SettingsScreen.h"
 #include "ui/screens/TextViewerScreen.h"
+#include "ui/screens/XtcViewerScreen.h"
 #include "ui/screens/ClockSettingsScreen.h"
 #include "ui/screens/TimezoneSelectScreen.h"
 #include "ui/screens/WifiPasswordEntryScreen.h"
@@ -176,6 +177,8 @@ UIManager::UIManager(EInkDisplay& display, SDCardManager& sdManager)
       std::unique_ptr<Screen>(new ImageViewerScreen(display, *this));
   screens[ScreenId::TextViewer] =
       std::unique_ptr<Screen>(new TextViewerScreen(display, textRenderer, sdManager, *this));
+  screens[ScreenId::XtcViewer] =
+      std::unique_ptr<Screen>(new XtcViewerScreen(display, textRenderer, sdManager, *this));
   screens[ScreenId::Settings] = std::unique_ptr<Screen>(new SettingsScreen(display, textRenderer, *this));
   screens[ScreenId::Chapters] = std::unique_ptr<Screen>(new ChaptersScreen(display, textRenderer, *this));
   screens[ScreenId::ClockSettings] =
@@ -449,6 +452,12 @@ void UIManager::prepareForSleep() {
     TextViewerScreen* tv = static_cast<TextViewerScreen*>(screens[ScreenId::TextViewer].get());
     if (tv) {
       tv->closeDocument();
+    }
+  }
+  if (currentScreen == ScreenId::XtcViewer) {
+    XtcViewerScreen* xv = static_cast<XtcViewerScreen*>(screens[ScreenId::XtcViewer].get());
+    if (xv) {
+      xv->closeDocument();
     }
   }
   // Persist which screen was active so we can restore it on next boot.
@@ -728,6 +737,15 @@ void UIManager::trySyncTimeFromNtp() {
 void UIManager::openTextFile(const String& sdPath) {
   Serial.printf("UIManager: openTextFile %s\n", sdPath.c_str());
 
+  {
+    String lf = sdPath;
+    lf.toLowerCase();
+    if (lf.endsWith(".xtc") || lf.endsWith(".xtch")) {
+      openXtcFile(sdPath);
+      return;
+    }
+  }
+
   display.clearScreen(0xFF);
   textRenderer.setFrameBuffer(display.getFrameBuffer());
   textRenderer.setBitmapType(TextRenderer::BITMAP_BW);
@@ -760,6 +778,40 @@ void UIManager::openTextFile(const String& sdPath) {
   showScreen(ScreenId::TextViewer);
 }
 
+void UIManager::openXtcFile(const String& sdPath) {
+  Serial.printf("UIManager: openXtcFile %s\n", sdPath.c_str());
+
+  display.clearScreen(0xFF);
+  textRenderer.setFrameBuffer(display.getFrameBuffer());
+  textRenderer.setBitmapType(TextRenderer::BITMAP_BW);
+  textRenderer.setTextColor(TextRenderer::COLOR_BLACK);
+  textRenderer.setFont(getMainFont());
+
+  {
+    const char* l1 = "Loading...";
+    const char* l2 = "(please wait)";
+    int16_t x1, y1;
+    uint16_t w1, h1;
+    uint16_t w2, h2;
+    textRenderer.getTextBounds(l1, 0, 0, &x1, &y1, &w1, &h1);
+    textRenderer.getTextBounds(l2, 0, 0, &x1, &y1, &w2, &h2);
+    const int16_t lineGap = 8;
+    int16_t totalH = (int16_t)h1 + lineGap + (int16_t)h2;
+    int16_t startY = (800 - totalH) / 2;
+    int16_t cx1 = (480 - (int)w1) / 2;
+    int16_t cx2 = (480 - (int)w2) / 2;
+    textRenderer.setCursor(cx1, startY);
+    textRenderer.print(l1);
+    textRenderer.setCursor(cx2, startY + (int16_t)h1 + lineGap);
+    textRenderer.print(l2);
+  }
+
+  display.displayBuffer(EInkDisplay::FAST_REFRESH);
+
+  static_cast<XtcViewerScreen*>(screens[ScreenId::XtcViewer].get())->openFile(sdPath);
+  showScreen(ScreenId::XtcViewer);
+}
+
 bool UIManager::clearEpubCache() {
   if (!sdManager.ready()) {
     return false;
@@ -777,8 +829,8 @@ void UIManager::showScreen(ScreenId id) {
     }
   }
 
-  // Apply reading orientation only while in TextViewer; keep UI screens in portrait.
-  if (id == ScreenId::TextViewer && settings) {
+  // Apply reading orientation only while in TextViewer/XtcViewer; keep UI screens in portrait.
+  if ((id == ScreenId::TextViewer || id == ScreenId::XtcViewer) && settings) {
     int orientation = 0;
     (void)settings->getInt(String("settings.orientation"), orientation);
     switch (orientation) {

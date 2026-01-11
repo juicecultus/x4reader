@@ -223,7 +223,7 @@ void FileBrowserScreen::loadFolder(int maxFiles) {
         continue;
       }
       String fullPath = String(dir) + "/" + name;
-      // Include .txt and .epub files (case-insensitive)
+      // Include .txt, .epub, .xtc, and .xtch files (case-insensitive)
       if (name.length() >= 4) {
         String ext = name.substring(name.length() - 4);
         ext.toLowerCase();
@@ -237,6 +237,19 @@ void FileBrowserScreen::loadFolder(int maxFiles) {
         ext.toLowerCase();
         if (ext == String(".epub")) {
           sdFiles.push_back(fullPath);
+          continue;
+        }
+        if (ext == String(".xtch")) {
+          sdFiles.push_back(fullPath);
+          continue;
+        }
+      }
+      if (name.length() >= 4) {
+        String ext = name.substring(name.length() - 4);
+        ext.toLowerCase();
+        if (ext == String(".xtc")) {
+          sdFiles.push_back(fullPath);
+          continue;
         }
       }
     }

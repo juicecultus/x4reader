@@ -17,6 +17,7 @@ class SDCardManager;
 class FileBrowserScreen;
 class ImageViewerScreen;
 class TextViewerScreen;
+class XtcViewerScreen;
 class SettingsScreen;
 class ChaptersScreen;
 class WifiSettingsScreen;
@@ -34,6 +35,7 @@ class UIManager {
     FileBrowser,
     ImageViewer,
     TextViewer,
+    XtcViewer,
     Settings,
     Chapters,
     ClockSettings,
@@ -59,6 +61,9 @@ class UIManager {
 
   // Open a text file (path on SD) in the text viewer and switch to that screen.
   void openTextFile(const String& sdPath);
+
+  // Open an XTC/XTCH file in the XTC viewer and switch to that screen.
+  void openXtcFile(const String& sdPath);
 
   bool clearEpubCache();
 
