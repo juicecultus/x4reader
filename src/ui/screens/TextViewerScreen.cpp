@@ -124,6 +124,24 @@ static bool writeBmp24TopDownFromFb(const char* path, const uint8_t* fb, uint16_
   return true;
 }
 
+static int16_t getFontMaxBottom_tv(const SimpleGFXfont* font) {
+  if (!font || !font->glyph) {
+    return 0;
+  }
+  int16_t maxBottom = 0;
+  for (uint16_t i = 0; i < font->glyphCount; ++i) {
+    const SimpleGFXglyph& g = font->glyph[i];
+    const int16_t bottom = (int16_t)g.yOffset + (int16_t)g.height;
+    if (bottom > maxBottom) {
+      maxBottom = bottom;
+    }
+  }
+  return maxBottom;
+}
+
+static constexpr int16_t kFooterPaddingBottom_tv = 8;
+static constexpr int16_t kFooterGapAbove_tv = 14;
+
 TextViewerScreen::TextViewerScreen(EInkDisplay& display, TextRenderer& renderer, SDCardManager& sdManager,
                                    UIManager& uiManager)
     : display(display),
@@ -239,6 +257,14 @@ void TextViewerScreen::loadSettingsFromFile() {
   int showChapterNumbersInt = 1;
   if (s.getInt(String("settings.showChapterNumbers"), showChapterNumbersInt)) {
     showChapterNumbers = (showChapterNumbersInt != 0);
+  }
+
+  {
+    const int16_t footerMaxBottom = getFontMaxBottom_tv(&MenuFontSmall);
+    const int16_t footerReserve = footerMaxBottom + kFooterPaddingBottom_tv + kFooterGapAbove_tv;
+    if (layoutConfig.marginBottom < footerReserve) {
+      layoutConfig.marginBottom = footerReserve;
+    }
   }
 }
 
@@ -510,7 +536,8 @@ void TextViewerScreen::showPage() {
     uint16_t w, h;
     textRenderer.getTextBounds(indicator.c_str(), 0, 0, &x1, &y1, &w, &h);
     int16_t centerX = (layoutConfig.pageWidth - (int)w) / 2;
-    int16_t indicatorY = layoutConfig.pageHeight - 10;
+    const int16_t footerMaxBottom = getFontMaxBottom_tv(&MenuFontSmall);
+    int16_t indicatorY = layoutConfig.pageHeight - kFooterPaddingBottom_tv - footerMaxBottom;
     textRenderer.setCursor(centerX, indicatorY);
     textRenderer.print(indicator);
   }
