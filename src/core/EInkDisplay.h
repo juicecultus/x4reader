@@ -8,8 +8,6 @@
 #include "../../test/mocks/platform_stubs.h"
 #endif
 
-class BBEPAPER;
-
 class EInkDisplay {
  public:
   // Constructor with pin configuration
@@ -66,10 +64,6 @@ class EInkDisplay {
     return frameBuffer;
   }
 
-  BBEPAPER* getBBEPAPER() {
-    return bbep;
-  }
-
   // Save the current framebuffer to a PBM file (desktop/test builds only)
   void saveFrameBufferAsPBM(const char* filename);
 
@@ -86,10 +80,6 @@ class EInkDisplay {
 
   // SPI settings
   SPISettings spiSettings;
-
-  SPISettings bbepSpiSettings;
-
-  BBEPAPER* bbep;
 
   // State
   bool isScreenOn;
@@ -108,9 +98,6 @@ class EInkDisplay {
   // Low-level display operations
   void setRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   void writeRamBuffer(uint8_t ramBuffer, const uint8_t* data, uint32_t size);
-
-  void bbepBeginTransaction();
-  void bbepEndTransaction();
 };
 
 #endif

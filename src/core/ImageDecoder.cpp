@@ -49,7 +49,7 @@ static int32_t rd32sle(const uint8_t* p) {
 }
 
 bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
-    if (!path || !ctx || !ctx->bbep) return false;
+    if (!path || !ctx || !ctx->frameBuffer) return false;
 
     File f = SD.open(path);
     if (!f) {
@@ -176,16 +176,12 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
                 const int fy = 479 - px;
                 if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
 
-                if (ctx->frameBuffer) {
-                    const int byteIdx = (fy * 100) + (fx / 8);
-                    const int bitIdx = 7 - (fx % 8);
-                    if (color == 0) {
-                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                    } else {
-                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                    }
+                const int byteIdx = (fy * 100) + (fx / 8);
+                const int bitIdx = 7 - (fx % 8);
+                if (color == 0) {
+                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
                 } else {
-                    ctx->bbep->drawPixel(fx, fy, color);
+                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
                 }
             }
         }
@@ -233,16 +229,12 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
                 const int fy = 479 - px;
                 if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
 
-                if (ctx->frameBuffer) {
-                    const int byteIdx = (fy * 100) + (fx / 8);
-                    const int bitIdx = 7 - (fx % 8);
-                    if (color == 0) {
-                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                    } else {
-                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                    }
+                const int byteIdx = (fy * 100) + (fx / 8);
+                const int bitIdx = 7 - (fx % 8);
+                if (color == 0) {
+                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
                 } else {
-                    ctx->bbep->drawPixel(fx, fy, color);
+                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
                 }
             }
         }
@@ -253,7 +245,10 @@ bool ImageDecoder::decodeBMPToDisplay(const char* path, DecodeContext* ctx) {
     return true;
 }
 
-bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+bool ImageDecoder::decodeToDisplay(const char* path, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+    if (!frameBuffer) {
+        return false;
+    }
     String p = String(path);
     p.toLowerCase();
 
@@ -269,7 +264,6 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
         return false;
     }
 
-    ctx->bbep = bbep;
     ctx->frameBuffer = frameBuffer;
     ctx->targetWidth = targetWidth;
     ctx->targetHeight = targetHeight;
@@ -501,7 +495,7 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
             if (!pDraw || !g_ctx) return 0;
             DecodeContext *ctx = g_ctx; 
             
-            if (!currentPNG || !ctx->bbep || !ctx->errorBuf) return 0;
+            if (!currentPNG || !ctx->frameBuffer || !ctx->errorBuf) return 0;
             
             uint16_t* usPixels = (uint16_t*)malloc(pDraw->iWidth * sizeof(uint16_t));
             if (!usPixels) return 0;
@@ -556,16 +550,12 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
 
                 uint8_t color = (gray < 128) ? 0 : 1;
                 
-                if (ctx->frameBuffer) {
-                    int byteIdx = (fy * 100) + (fx / 8);
-                    int bitIdx = 7 - (fx % 8);
-                    if (color == 0) {
-                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                    } else {
-                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                    }
+                int byteIdx = (fy * 100) + (fx / 8);
+                int bitIdx = 7 - (fx % 8);
+                if (color == 0) {
+                    ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
                 } else {
-                    ctx->bbep->drawPixel(fx, fy, color);
+                    ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
                 }
 
                 int16_t err = gray - (color ? 255 : 0);
@@ -639,7 +629,10 @@ bool ImageDecoder::decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* fr
     return result;
 }
 
-bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+bool ImageDecoder::decodeToDisplayFitWidth(const char* path, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight) {
+    if (!frameBuffer) {
+        return false;
+    }
     String p = String(path);
     p.toLowerCase();
 
@@ -654,7 +647,6 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
         return false;
     }
 
-    ctx->bbep = bbep;
     ctx->frameBuffer = frameBuffer;
     ctx->targetWidth = targetWidth;
     ctx->targetHeight = targetHeight;
@@ -807,7 +799,7 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
         }, [](PNGDRAW *pDraw) -> int {
             if (!pDraw || !g_ctx) return 0;
             DecodeContext *ctx = g_ctx;
-            if (!currentPNG || !ctx->bbep || !ctx->errorBuf) return 0;
+            if (!currentPNG || !ctx->frameBuffer || !ctx->errorBuf) return 0;
 
             uint16_t* usPixels = (uint16_t*)malloc(pDraw->iWidth * sizeof(uint16_t));
             if (!usPixels) return 0;
@@ -867,16 +859,12 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
 
                     uint8_t color = (gray < 128) ? 0 : 1;
 
-                    if (ctx->frameBuffer) {
-                        int byteIdx = (fy * 100) + (fx / 8);
-                        int bitIdx = 7 - (fx % 8);
-                        if (color == 0) {
-                            ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                        } else {
-                            ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                        }
+                    int byteIdx = (fy * 100) + (fx / 8);
+                    int bitIdx = 7 - (fx % 8);
+                    if (color == 0) {
+                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
                     } else {
-                        ctx->bbep->drawPixel(fx, fy, color);
+                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
                     }
 
                     int16_t err = gray - (color ? 255 : 0);
@@ -930,7 +918,7 @@ bool ImageDecoder::decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uin
 int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
     if (!pDraw || !g_ctx || !pDraw->pPixels) return 0;
     DecodeContext *ctx = g_ctx; 
-    if (!ctx->bbep) return 0;
+    if (!ctx->frameBuffer) return 0;
 
     // NOTE: JPEGDEC invokes this callback in MCU blocks, not strict scanlines.
     // Error-diffusion dithering assumes left-to-right row order and causes heavy
@@ -1007,16 +995,12 @@ int ImageDecoder::JPEGDraw(JPEGDRAW *pDraw) {
                     const int fy = 479 - px;
                     if (fx < 0 || fx >= 800 || fy < 0 || fy >= 480) continue;
 
-                    if (ctx->frameBuffer) {
-                        int byteIdx = (fy * 100) + (fx / 8);
-                        int bitIdx = 7 - (fx % 8);
-                        if (color == 0) {
-                            ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-                        } else {
-                            ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-                        }
+                    const int byteIdx = (fy * 100) + (fx / 8);
+                    const int bitIdx = 7 - (fx % 8);
+                    if (color == 0) {
+                        ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
                     } else {
-                        ctx->bbep->drawPixel(fx, fy, color);
+                        ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
                     }
                 }
             }
@@ -1029,7 +1013,7 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
     if (!pDraw || !g_ctx) return;
     DecodeContext *ctx = g_ctx; 
     
-    if (!currentPNG || !ctx->bbep || !ctx->errorBuf) return;
+    if (!currentPNG || !ctx->frameBuffer || !ctx->errorBuf) return;
     
     uint16_t* usPixels = (uint16_t*)malloc(pDraw->iWidth * sizeof(uint16_t));
     if (!usPixels) return;
@@ -1096,16 +1080,12 @@ void ImageDecoder::PNGDraw(PNGDRAW *pDraw) {
 
         uint8_t color = (gray < 128) ? 0 : 1;
         
-        if (ctx->frameBuffer) {
-            int byteIdx = (fy * 100) + (fx / 8);
-            int bitIdx = 7 - (fx % 8);
-            if (color == 0) {
-                ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
-            } else {
-                ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
-            }
+        int byteIdx = (fy * 100) + (fx / 8);
+        int bitIdx = 7 - (fx % 8);
+        if (color == 0) {
+            ctx->frameBuffer[byteIdx] &= ~(1 << bitIdx);
         } else {
-            ctx->bbep->drawPixel(fx, fy, color);
+            ctx->frameBuffer[byteIdx] |= (1 << bitIdx);
         }
 
         if (useDither) {

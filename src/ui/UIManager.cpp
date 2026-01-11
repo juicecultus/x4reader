@@ -361,7 +361,7 @@ void UIManager::showSleepScreen() {
       if (freeHeap < 60000) {
         Serial.printf("Skipping book cover sleep screen decode due to low heap (Free=%u)\n", (unsigned)freeHeap);
       } else {
-        if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+        if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getFrameBuffer(), 480, 800)) {
           usedRandomCover = true;
         } else {
           Serial.println("Failed to decode book cover sleep screen");
@@ -424,7 +424,7 @@ void UIManager::showSleepScreen() {
 
         // decodeToDisplay writes directly to the buffer we pass it.
         // We pass the current back buffer (which display.getFrameBuffer() returns).
-        if (ImageDecoder::decodeToDisplay(selected.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+        if (ImageDecoder::decodeToDisplay(selected.c_str(), display.getFrameBuffer(), 480, 800)) {
           usedRandomCover = true;
           g_lastSleepCoverIndex = idx;
           break;

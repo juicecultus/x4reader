@@ -734,7 +734,7 @@ void TextViewerScreen::openFile(const String& sdPath) {
 
         bool ok = false;
         sdManager.ensureSpiBusIdle();
-        if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getBBEPAPER(), display.getFrameBuffer(), 480, 800)) {
+        if (ImageDecoder::decodeToDisplayFitWidth(coverPath.c_str(), display.getFrameBuffer(), 480, 800)) {
           sdManager.ensureSpiBusIdle();
           ok = writeBmp24TopDownFromFb(cachedPath.c_str(), display.getFrameBuffer(), 480, 800);
         }

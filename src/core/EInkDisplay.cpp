@@ -4,10 +4,6 @@
 #include <fstream>
 #include <vector>
 
-#ifdef ARDUINO
-#include <bb_epaper.h>
-#endif
-
 // SSD1677 command definitions
 // Initialization and reset
 #define CMD_SOFT_RESET 0x12             // Soft reset
@@ -121,27 +117,14 @@ EInkDisplay::EInkDisplay(int8_t sclk, int8_t mosi, int8_t cs, int8_t dc, int8_t 
       frameBuffer(nullptr),
       frameBufferActive(nullptr),
       customLutActive(false),
-      bbep(nullptr),
       isScreenOn(false),
       inGrayscaleMode(false),
       drawGrayscale(false) {
   Serial.printf("[%lu] EInkDisplay: Constructor called\n", millis());
   Serial.printf("[%lu]   SCLK=%d, MOSI=%d, CS=%d, DC=%d, RST=%d, BUSY=%d\n", millis(), sclk, mosi, cs, dc, rst, busy);
-
-#ifdef ARDUINO
-  // bb_epaper uses the global SPI object; SD can reconfigure it.
-  // Force a known-good transaction state when talking to the panel.
-  bbepSpiSettings = SPISettings(12000000, MSBFIRST, SPI_MODE0);
-#endif
 }
 
 EInkDisplay::~EInkDisplay() {
-#ifdef ARDUINO
-  if (bbep) {
-    delete bbep;
-    bbep = nullptr;
-  }
-#endif
 }
 
 void EInkDisplay::begin() {
@@ -158,51 +141,38 @@ void EInkDisplay::begin() {
   Serial.printf("[%lu]   Initializing e-ink display driver...\n", millis());
 
 #ifdef ARDUINO
-  // bb_epaper handles SPI init internally once we provide GPIO/pin mapping.
-  if (bbep) {
-    delete bbep;
-    bbep = nullptr;
-  }
+  // Initialize SPI with custom pins
+  SPI.begin(_sclk, -1, _mosi, _cs);
+  spiSettings = SPISettings(40000000, MSBFIRST, SPI_MODE0);  // MODE0 is standard for SSD1677
+  Serial.printf("[%lu]   SPI initialized at 40 MHz, Mode 0\n", millis());
 
-  bbep = new BBEPAPER(EP426_800x480);
-  bbep->initIO(_dc, _rst, _busy, _cs, _mosi, _sclk, 12000000);
-  bbep->setBuffer(frameBuffer);
+  // Setup GPIO pins
+  pinMode(_cs, OUTPUT);
+  pinMode(_dc, OUTPUT);
+  pinMode(_rst, OUTPUT);
+  pinMode(_busy, INPUT);
 
-  // Ensure rotation matches our framebuffer layout (800x480 landscape).
-  bbep->setRotation(0);
-
-  // Start from a known state.
-  bbepBeginTransaction();
-  bbep->wake();
-  bbepEndTransaction();
-  isScreenOn = true;
-
-  bbepBeginTransaction();
-  int rcPlane = bbep->writePlane(PLANE_DUPLICATE);
-  int rcRefresh = bbep->refresh(REFRESH_FULL, true);
-  bbepEndTransaction();
-  Serial.printf("[%lu]   bb_epaper: writePlane rc=%d, refresh rc=%d\n", millis(), rcPlane, rcRefresh);
-  Serial.printf("[%lu]   bb_epaper display driver initialized\n", millis());
-#endif
-}
-
-void EInkDisplay::bbepBeginTransaction() {
-#ifdef ARDUINO
-  // Ensure we own the bus and are in a known mode/speed. SD operations can
-  // leave SPI configured differently.
-  SPI.beginTransaction(bbepSpiSettings);
   digitalWrite(_cs, HIGH);
-#endif
-}
+  digitalWrite(_dc, HIGH);
 
-void EInkDisplay::bbepEndTransaction() {
-#ifdef ARDUINO
-  SPI.endTransaction();
+  Serial.printf("[%lu]   GPIO pins configured\n", millis());
+
+  // Reset display
+  resetDisplay();
+
+  // Initialize display controller
+  initDisplayController();
+
+  // The controller is initialized, but we haven't necessarily turned on the
+  // analog/clock rails yet.
+  isScreenOn = false;
+
+  Serial.printf("[%lu]   E-ink display driver initialized\n", millis());
 #endif
 }
 
 bool EInkDisplay::supportsGrayscale() const {
-  return false;
+  return true;
 }
 
 // ============================================================================
@@ -406,40 +376,29 @@ void EInkDisplay::swapBuffers() {
 }
 
 void EInkDisplay::grayscaleRevert() {
-  // bb_epaper integration is BW-only for now.
+  if (!inGrayscaleMode) {
+    return;
+  }
+
   inGrayscaleMode = false;
+
+  // Load the revert LUT
+  setCustomLUT(true, lut_grayscale_revert);
+  refreshDisplay(FAST_REFRESH);
+  setCustomLUT(false);
 }
 
 void EInkDisplay::copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer) {
-#ifdef ARDUINO
-  if (bbep) {
-    (void)lsbBuffer;
-    return;
-  }
-#endif
   setRamArea(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
   writeRamBuffer(CMD_WRITE_RAM_BW, lsbBuffer, BUFFER_SIZE);
 }
 
 void EInkDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) {
-#ifdef ARDUINO
-  if (bbep) {
-    (void)msbBuffer;
-    return;
-  }
-#endif
   setRamArea(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
   writeRamBuffer(CMD_WRITE_RAM_RED, msbBuffer, BUFFER_SIZE);
 }
 
 void EInkDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {
-#ifdef ARDUINO
-  if (bbep) {
-    (void)lsbBuffer;
-    (void)msbBuffer;
-    return;
-  }
-#endif
   setRamArea(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
   writeRamBuffer(CMD_WRITE_RAM_BW, lsbBuffer, BUFFER_SIZE);
   writeRamBuffer(CMD_WRITE_RAM_RED, msbBuffer, BUFFER_SIZE);
@@ -447,72 +406,98 @@ void EInkDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* 
 
 void EInkDisplay::displayBuffer(RefreshMode mode) {
 #ifdef ARDUINO
-  if (!bbep) {
-    return;
-  }
-
   if (!isScreenOn) {
-    bbepBeginTransaction();
-    bbep->wake();
-    bbepEndTransaction();
-    isScreenOn = true;
+    // Force half refresh if screen is off
+    mode = HALF_REFRESH;
   }
 
-  bbep->setBuffer(frameBuffer);
-  bbepBeginTransaction();
-  int rcPlane = bbep->writePlane(PLANE_DUPLICATE);
-  bbepEndTransaction();
-  if (rcPlane != BBEP_SUCCESS) {
-    Serial.printf("[%lu]   bb_epaper: writePlane failed rc=%d\n", millis(), rcPlane);
+  // If currently in grayscale mode, revert first to black/white
+  if (inGrayscaleMode) {
+    inGrayscaleMode = false;
+    grayscaleRevert();
   }
-  refreshDisplay(mode, false);
 
-  // Keep the existing double-buffer behavior so the next render happens into
-  // a fresh buffer.
+  // Set up full screen RAM area
+  setRamArea(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+
+  if (mode != FAST_REFRESH) {
+    // For full refresh, write to both buffers before refresh
+    writeRamBuffer(CMD_WRITE_RAM_BW, frameBuffer, BUFFER_SIZE);
+    writeRamBuffer(CMD_WRITE_RAM_RED, frameBuffer, BUFFER_SIZE);
+  } else {
+    // For fast refresh, write to BW buffer only
+    writeRamBuffer(CMD_WRITE_RAM_BW, frameBuffer, BUFFER_SIZE);
+    // In dual buffer mode, we write back frameBufferActive which is the last frame
+    writeRamBuffer(CMD_WRITE_RAM_RED, frameBufferActive, BUFFER_SIZE);
+  }
+
   swapBuffers();
+
+  // Refresh the display
+  refreshDisplay(mode);
 #else
   (void)mode;
 #endif
 }
 
 void EInkDisplay::displayGrayBuffer(bool turnOffScreen) {
-  // bb_epaper integration is BW-only for now.
+#ifdef ARDUINO
+  drawGrayscale = false;
+  inGrayscaleMode = true;
+
+  // activate the custom LUT for grayscale rendering and refresh
+  setCustomLUT(true, lut_grayscale);
+  refreshDisplay(FAST_REFRESH, turnOffScreen);
+  setCustomLUT(false);
+#else
   (void)turnOffScreen;
+#endif
 }
 
 void EInkDisplay::refreshDisplay(RefreshMode mode, bool turnOffScreen) {
 #ifdef ARDUINO
-  if (!bbep) {
-    return;
-  }
+  // Configure Display Update Control 1
+  sendCommand(CMD_DISPLAY_UPDATE_CTRL1);
+  sendData((mode == FAST_REFRESH) ? CTRL1_NORMAL : CTRL1_BYPASS_RED);  // Configure buffer comparison mode
 
-  int refreshMode = REFRESH_FULL;
-  if (mode == FULL_REFRESH) {
-    refreshMode = REFRESH_FULL;
-  } else if (mode == HALF_REFRESH) {
-    refreshMode = bbep->hasFastRefresh() ? REFRESH_FAST : REFRESH_FULL;
-  } else {
-    // We currently write the same image to both controller planes (PLANE_DUPLICATE).
-    // Partial refresh relies on plane differences; duplicating makes the diff empty
-    // and can result in *no visible update* on some controllers.
-    // Use FAST refresh as a reliable baseline until we implement true old/new plane
-    // tracking for partial updates.
-    refreshMode = bbep->hasFastRefresh() ? REFRESH_FAST : REFRESH_FULL;
-  }
+  // Select appropriate display mode based on refresh type
+  uint8_t displayMode = 0x00;
 
-  bbepBeginTransaction();
-  int rc = bbep->refresh(refreshMode, true);
-  bbepEndTransaction();
-  if (rc != BBEP_SUCCESS) {
-    Serial.printf("[%lu]   bb_epaper: refresh failed mode=%d rc=%d\n", millis(), refreshMode, rc);
-  }
+  // Always enable CLOCK_ON + ANALOG_ON for any refresh.
+  // Without these, the panel can refresh extremely faint/invisible.
+  displayMode |= 0xC0;
 
+  // Turn off screen if requested
   if (turnOffScreen) {
-    bbepBeginTransaction();
-    bbep->sleep(DEEP_SLEEP);
-    bbepEndTransaction();
     isScreenOn = false;
+    displayMode |= 0x03;  // Set ANALOG_OFF_PHASE and CLOCK_OFF bits
+  } else {
+    isScreenOn = true;
   }
+
+  if (mode == FULL_REFRESH) {
+    // TEMP_LOAD | MODE_SELECT | DISPLAY_START
+    displayMode |= 0x34;
+  } else if (mode == HALF_REFRESH) {
+    // Write high temp to the register for a faster refresh
+    sendCommand(CMD_WRITE_TEMP);
+    sendData(0x5A);
+    displayMode |= 0xD4;
+  } else {  // FAST_REFRESH
+    displayMode |= customLutActive ? 0x0C : 0x1C;
+  }
+
+  // Power on and refresh display
+  const char* refreshType = (mode == FULL_REFRESH) ? "full" : (mode == HALF_REFRESH) ? "half" : "fast";
+  Serial.printf("[%lu]   Powering on display 0x%02X (%s refresh)...\n", millis(), displayMode, refreshType);
+  sendCommand(CMD_DISPLAY_UPDATE_CTRL2);
+  sendData(displayMode);
+
+  sendCommand(CMD_MASTER_ACTIVATION);
+
+  // Wait for display to finish updating
+  Serial.printf("[%lu]   Waiting for display refresh...\n", millis());
+  waitWhileBusy(refreshType);
 #else
   (void)mode;
   (void)turnOffScreen;
@@ -520,20 +505,66 @@ void EInkDisplay::refreshDisplay(RefreshMode mode, bool turnOffScreen) {
 }
 
 void EInkDisplay::setCustomLUT(bool enabled, const unsigned char* lutData) {
+#ifdef ARDUINO
+  if (enabled) {
+    Serial.printf("[%lu]   Loading custom LUT...\n", millis());
+
+    // Load custom LUT (first 105 bytes: VS + TP/RP + frame rate)
+    sendCommand(CMD_WRITE_LUT);
+    for (uint16_t i = 0; i < 105; i++) {
+      sendData(pgm_read_byte(&lutData[i]));
+    }
+
+    // Set voltage values from bytes 105-109
+    sendCommand(CMD_GATE_VOLTAGE);  // VGH
+    sendData(pgm_read_byte(&lutData[105]));
+
+    sendCommand(CMD_SOURCE_VOLTAGE);         // VSH1, VSH2, VSL
+    sendData(pgm_read_byte(&lutData[106]));  // VSH1
+    sendData(pgm_read_byte(&lutData[107]));  // VSH2
+    sendData(pgm_read_byte(&lutData[108]));  // VSL
+
+    sendCommand(CMD_WRITE_VCOM);  // VCOM
+    sendData(pgm_read_byte(&lutData[109]));
+
+    customLutActive = true;
+    Serial.printf("[%lu]   Custom LUT loaded\n", millis());
+  } else {
+    customLutActive = false;
+    Serial.printf("[%lu]   Custom LUT disabled\n", millis());
+  }
+#else
   (void)enabled;
   (void)lutData;
   customLutActive = false;
+#endif
 }
 
 void EInkDisplay::deepSleep() {
 #ifdef ARDUINO
-  Serial.printf("[%lu]   Entering deep sleep mode...\n", millis());
-  if (bbep) {
-    bbepBeginTransaction();
-    bbep->sleep(DEEP_SLEEP);
-    bbepEndTransaction();
+  Serial.printf("[%lu]   Preparing display for deep sleep...\n", millis());
+
+  // First, power down the display properly
+  // This shuts down the analog power rails and clock
+  if (isScreenOn) {
+    sendCommand(CMD_DISPLAY_UPDATE_CTRL1);
+    sendData(CTRL1_BYPASS_RED);
+
+    sendCommand(CMD_DISPLAY_UPDATE_CTRL2);
+    sendData(0x03);  // Set ANALOG_OFF_PHASE (bit 1) and CLOCK_OFF (bit 0)
+
+    sendCommand(CMD_MASTER_ACTIVATION);
+
+    // Wait for the power-down sequence to complete
+    waitWhileBusy(" display power-down");
+
     isScreenOn = false;
   }
+
+  // Now enter deep sleep mode
+  Serial.printf("[%lu]   Entering deep sleep mode...\n", millis());
+  sendCommand(CMD_DEEP_SLEEP);
+  sendData(0x01);  // Enter deep sleep
 #endif
 }
 

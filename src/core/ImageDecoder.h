@@ -10,12 +10,10 @@
 #undef INTELSHORT
 #undef INTELLONG
 #include <PNGdec.h>
-#include <bb_epaper.h>
 
 class ImageDecoder {
 public:
     struct DecodeContext {
-        BBEPAPER* bbep;
         uint8_t* frameBuffer;
         uint16_t targetWidth;
         uint16_t targetHeight;
@@ -42,9 +40,9 @@ public:
      * @param targetHeight Target height (480 for current display).
      * @return true if decoding was successful.
      */
-    static bool decodeToDisplay(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
+    static bool decodeToDisplay(const char* path, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
 
-    static bool decodeToDisplayFitWidth(const char* path, BBEPAPER* bbep, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
+    static bool decodeToDisplayFitWidth(const char* path, uint8_t* frameBuffer, uint16_t targetWidth, uint16_t targetHeight);
 
 private:
     static bool decodeBMPToDisplay(const char* path, DecodeContext* ctx);
