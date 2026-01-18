@@ -20,6 +20,18 @@ extern const SimpleGFXfont NotoSans28Bold;
 extern const SimpleGFXfont NotoSans28Italic;
 extern const SimpleGFXfont NotoSans28BoldItalic;
 
+// NotoSans32 font declarations (XL)
+extern const SimpleGFXfont NotoSans32;
+extern const SimpleGFXfont NotoSans32Bold;
+extern const SimpleGFXfont NotoSans32Italic;
+extern const SimpleGFXfont NotoSans32BoldItalic;
+
+// NotoSans34 font declarations (XXL)
+extern const SimpleGFXfont NotoSans34;
+extern const SimpleGFXfont NotoSans34Bold;
+extern const SimpleGFXfont NotoSans34Italic;
+extern const SimpleGFXfont NotoSans34BoldItalic;
+
 // Bookerly26 font declarations
 extern const SimpleGFXfont Bookerly26;
 extern const SimpleGFXfont Bookerly26Bold;
@@ -45,6 +57,8 @@ extern const SimpleGFXfont Bookerly28BoldItalic;
 extern FontFamily notoSans26Family;
 extern FontFamily notoSans28Family;
 extern FontFamily notoSans30Family;
+extern FontFamily notoSans32Family;
+extern FontFamily notoSans34Family;
 extern FontFamily bookerly26Family;
 extern FontFamily bookerly28Family;
 extern FontFamily bookerly30Family;

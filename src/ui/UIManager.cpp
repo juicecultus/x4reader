@@ -197,8 +197,8 @@ static bool queryNtpUnixEpoch(const char* server, uint32_t timeoutMs, int64_t& o
   return false;
 }
 
-UIManager::UIManager(EInkDisplay& display, SDCardManager& sdManager)
-    : display(display), sdManager(sdManager), textRenderer(display) {
+UIManager::UIManager(EInkDisplay& display, SDCardManager& sdManager, Buttons& buttons)
+    : display(display), sdManager(sdManager), textRenderer(display), buttons(buttons) {
   // Initialize consolidated settings manager
   settings = new Settings(sdManager);
   // Create concrete screens and store pointers in the array.
@@ -340,7 +340,7 @@ void UIManager::startAutoNtpSyncIfEnabled() {
   xTaskCreate(&UIManager::ntpSyncTaskTrampoline, "NtpSync", 8192, this, 1, &ntpSyncTaskHandle);
 }
 
-void UIManager::handleButtons(Buttons& buttons) {
+void UIManager::handleButtons() {
   // Pass buttons to the current screen
   // Directly forward to the active screen (must exist)
   screens[currentScreen]->handleButtons(buttons);
@@ -1186,8 +1186,8 @@ void UIManager::showScreen(ScreenId id) {
   }
 
   // Apply reading orientation only while in TextViewer/XtcViewer; keep UI screens in portrait.
+  int orientation = 0;
   if ((id == ScreenId::TextViewer || id == ScreenId::XtcViewer) && settings) {
-    int orientation = 0;
     (void)settings->getInt(String("settings.orientation"), orientation);
     switch (orientation) {
       case 0:
@@ -1196,12 +1196,6 @@ void UIManager::showScreen(ScreenId id) {
       case 1:
         textRenderer.setOrientation(TextRenderer::LandscapeClockwise);
         break;
-      case 2:
-        textRenderer.setOrientation(TextRenderer::PortraitInverted);
-        break;
-      case 3:
-        textRenderer.setOrientation(TextRenderer::LandscapeCounterClockwise);
-        break;
       default:
         textRenderer.setOrientation(TextRenderer::Portrait);
         break;
@@ -1209,6 +1203,8 @@ void UIManager::showScreen(ScreenId id) {
   } else {
     textRenderer.setOrientation(TextRenderer::Portrait);
   }
+  // Update button tap zones for the current orientation
+  buttons.setOrientation(orientation);
 
   previousScreen = currentScreen;
   currentScreen = id;

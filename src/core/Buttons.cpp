@@ -88,25 +88,51 @@ uint8_t Buttons::getState() {
     return state;
   }
 
-  // Simple screen-zone mapping:
-  // - Top-left corner: BACK
-  // - Left third: LEFT
-  // - Right third: RIGHT
-  // - Middle: CONFIRM
+  // Screen-zone mapping depends on orientation
+  // Portrait (0): Left/Right thirds for page navigation
+  // Landscape (1): Top/Bottom thirds for page navigation (rotated 90° CW)
   const int16_t backZoneW = 90;
   const int16_t backZoneH = 90;
-  if (x < backZoneW && y < backZoneH) {
-    state |= (1 << BACK);
-    return state;
-  }
 
-  const int16_t w = (int16_t)EInkDisplay::DISPLAY_WIDTH;
-  if (x < (w / 3)) {
-    state |= (1 << LEFT);
-  } else if (x >= (w - (w / 3))) {
-    state |= (1 << RIGHT);
+  if (_orientation == 0) {
+    // Portrait mode: original layout
+    // - Top-left corner: BACK
+    // - Left third: LEFT (next page)
+    // - Right third: RIGHT (prev page)
+    // - Middle: CONFIRM
+    if (x < backZoneW && y < backZoneH) {
+      state |= (1 << BACK);
+      return state;
+    }
+
+    const int16_t w = (int16_t)EInkDisplay::DISPLAY_WIDTH;
+    if (x < (w / 3)) {
+      state |= (1 << LEFT);
+    } else if (x >= (w - (w / 3))) {
+      state |= (1 << RIGHT);
+    } else {
+      state |= (1 << CONFIRM);
+    }
   } else {
-    state |= (1 << CONFIRM);
+    // Landscape mode: rotated layout
+    // In landscape CW, the physical screen is rotated so:
+    // - Top-left corner (in portrait coords): BACK
+    // - Top third (portrait Y): LEFT (next page) - maps to left side in landscape view
+    // - Bottom third (portrait Y): RIGHT (prev page) - maps to right side in landscape view
+    // - Middle: CONFIRM
+    if (x < backZoneW && y < backZoneH) {
+      state |= (1 << BACK);
+      return state;
+    }
+
+    const int16_t h = (int16_t)EInkDisplay::DISPLAY_HEIGHT;
+    if (y < (h / 3)) {
+      state |= (1 << LEFT);  // Top in portrait = Left in landscape
+    } else if (y >= (h - (h / 3))) {
+      state |= (1 << RIGHT);  // Bottom in portrait = Right in landscape
+    } else {
+      state |= (1 << CONFIRM);
+    }
   }
 
   return state;

@@ -151,7 +151,7 @@ void SettingsScreen::toggleCurrentSetting() {
       break;
     case 7:  // Font Size
       fontSizeIndex++;
-      if (fontSizeIndex >= 3)
+      if (fontSizeIndex >= 5)  // Small, Medium, Large, XL, XXL
         fontSizeIndex = 0;
       applyFontSettings();
       break;
@@ -164,7 +164,7 @@ void SettingsScreen::toggleCurrentSetting() {
       break;
     case 10:  // Orientation
       orientationIndex++;
-      if (orientationIndex >= 4)
+      if (orientationIndex >= 2)  // Portrait, Landscape only
         orientationIndex = 0;
       break;
     case 11:  // Time to Sleep
@@ -394,6 +394,10 @@ String SettingsScreen::getSettingValue(int index) {
           return "Medium";
         case 2:
           return "Large";
+        case 3:
+          return "XL";
+        case 4:
+          return "XXL";
         default:
           return "Unknown";
       }
@@ -406,11 +410,7 @@ String SettingsScreen::getSettingValue(int index) {
         case 0:
           return "Portrait";
         case 1:
-          return "Land CW";
-        case 2:
-          return "Inverted";
-        case 3:
-          return "Land CCW";
+          return "Landscape";
         default:
           return "Portrait";
       }
@@ -459,6 +459,12 @@ void SettingsScreen::applyFontSettings() {
       case 2:
         targetFamily = &notoSans30Family;
         break;
+      case 3:  // XL
+        targetFamily = &notoSans32Family;
+        break;
+      case 4:  // XXL
+        targetFamily = &notoSans34Family;
+        break;
     }
   } else if (fontFamilyIndex == 1) {  // Bookerly
     switch (fontSizeIndex) {
@@ -470,6 +476,12 @@ void SettingsScreen::applyFontSettings() {
         break;
       case 2:
         targetFamily = &bookerly30Family;
+        break;
+      case 3:  // XL - Bookerly doesn't have 32pt, use NotoSans32
+        targetFamily = &notoSans32Family;
+        break;
+      case 4:  // XXL - Bookerly doesn't have 34pt, use NotoSans34
+        targetFamily = &notoSans34Family;
         break;
     }
   }

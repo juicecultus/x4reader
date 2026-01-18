@@ -39,7 +39,7 @@ class SettingsScreen : public Screen {
   // Sleep screen mode: 0=Book Cover (default), 1=SD Random
   int sleepScreenModeIndex = 0;
 
-  // Reading orientation: 0=Portrait, 1=Landscape CW, 2=Inverted, 3=Landscape CCW
+  // Reading orientation: 0=Portrait, 1=Landscape
   int orientationIndex = 0;
 
   // Time to sleep: 0=1 min, 1=5 min, 2=10 min, 3=15 min, 4=30 min

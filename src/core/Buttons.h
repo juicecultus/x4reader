@@ -10,6 +10,9 @@ class Buttons {
   uint8_t getState();
   void update();
 
+  // Set orientation for touch zone mapping (0=Portrait, 1=Landscape)
+  void setOrientation(int orientation) { _orientation = orientation; }
+
   // Button state queries
   bool isDown(uint8_t buttonIndex);                    // Is button currently held down?
   bool isPressed(uint8_t buttonIndex);                 // Was button just pressed this frame?
@@ -61,6 +64,9 @@ class Buttons {
   static const unsigned long DEBOUNCE_DELAY = 5;
 
   static const char* BUTTON_NAMES[];
+
+  // Current orientation for touch zone mapping (0=Portrait, 1=Landscape)
+  int _orientation = 0;
 };
 
 #endif

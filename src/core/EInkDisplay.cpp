@@ -191,7 +191,7 @@ void EInkDisplay::begin() {
 
     // Increase partial update passes for cleaner text rendering (reduces ghosting)
     // Default is typically 2-3 passes; more passes = cleaner but slower
-    g_epd.setPasses(8, 8);  // 8 partial passes, 8 full passes
+    g_epd.setPasses(12, 12);  // 10 partial passes, 10 full passes
 
     // Keep FastEPD at its native rotation.
     // FastEPD's internal 1bpp packing differs across rotations; directly memcpy'ing

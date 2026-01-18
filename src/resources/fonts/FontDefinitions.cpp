@@ -13,6 +13,14 @@
 #include "notosans/NotoSans30Bold.h"
 #include "notosans/NotoSans30BoldItalic.h"
 #include "notosans/NotoSans30Italic.h"
+#include "notosans/NotoSans32.h"
+#include "notosans/NotoSans32Bold.h"
+#include "notosans/NotoSans32BoldItalic.h"
+#include "notosans/NotoSans32Italic.h"
+#include "notosans/NotoSans34.h"
+#include "notosans/NotoSans34Bold.h"
+#include "notosans/NotoSans34BoldItalic.h"
+#include "notosans/NotoSans34Italic.h"
 
 // Bookerly fonts
 #include "bookerly/Bookerly26.h"
@@ -56,6 +64,22 @@ FontFamily notoSans30Family = {
     &NotoSans30Bold,       // bold
     &NotoSans30Italic,     // italic
     &NotoSans30BoldItalic  // boldItalic
+};
+
+FontFamily notoSans32Family = {
+    "NotoSans32",
+    &NotoSans32,           // regular
+    &NotoSans32Bold,       // bold
+    &NotoSans32Italic,     // italic
+    &NotoSans32BoldItalic  // boldItalic
+};
+
+FontFamily notoSans34Family = {
+    "NotoSans34",
+    &NotoSans34,           // regular
+    &NotoSans34Bold,       // bold
+    &NotoSans34Italic,     // italic
+    &NotoSans34BoldItalic  // boldItalic
 };
 
 FontFamily bookerly26Family = {

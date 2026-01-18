@@ -251,7 +251,7 @@ void setup() {
   Serial.println("Display initialized");
 
   // Initialize display controller (handles application logic)
-  uiManager = new UIManager(einkDisplay, sdManager);
+  uiManager = new UIManager(einkDisplay, sdManager, buttons);
   uiManager->begin();
 
   Serial.println("Initialization complete!\n");
@@ -277,7 +277,7 @@ void loop() {
 
   // Button state is updated by background task
   if (uiManager)
-    uiManager->handleButtons(buttons);
+    uiManager->handleButtons();
 
   // Auto-sleep after inactivity (skip when USB is connected)
   static unsigned long lastActivityTime = millis();

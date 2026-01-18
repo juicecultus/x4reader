@@ -47,11 +47,11 @@ class UIManager {
   };
 
   // Constructor
-  UIManager(EInkDisplay& display, class SDCardManager& sdManager);
+  UIManager(EInkDisplay& display, class SDCardManager& sdManager, Buttons& buttons);
   ~UIManager();
 
   void begin();
-  void handleButtons(Buttons& buttons);
+  void handleButtons();
   void showSleepScreen();
   // Prepare UI for power-off: notify active screen to persist state
   void prepareForSleep();
@@ -102,6 +102,9 @@ class UIManager {
 
   // Global settings manager (single consolidated settings file)
   class Settings* settings = nullptr;
+
+  // Reference to buttons for orientation updates
+  Buttons& buttons;
 
  public:
   Settings& getSettings() {
