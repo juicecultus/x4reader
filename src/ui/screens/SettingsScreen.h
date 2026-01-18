@@ -25,7 +25,7 @@ class SettingsScreen : public Screen {
 
   // Menu navigation
   int selectedIndex = 0;
-  static constexpr int SETTINGS_COUNT = 16;
+  static constexpr int SETTINGS_COUNT = 17;
 
   // Setting values and their current indices
   int marginIndex = 1;
@@ -48,6 +48,9 @@ class SettingsScreen : public Screen {
   // Startup behavior: 0=Home, 1=Resume last (default)
   int startupBehaviorIndex = 1;
 
+  // Display refresh passes: 0=4, 1=6, 2=8, 3=10, 4=12, 5=14, 6=16
+  int refreshPassesIndex = 4;  // Default to 12 passes
+
   int clearCacheStatus = -1; // -1=idle, 0=fail, 1=ok
 
   // Available values for each setting
@@ -57,6 +60,8 @@ class SettingsScreen : public Screen {
   static constexpr int lineHeightValuesCount = 6;
   static constexpr int paragraphSpacingValues[] = {0, 6, 12, 18, 24, 30};
   static constexpr int paragraphSpacingValuesCount = 6;
+  static constexpr int refreshPassesValues[] = {4, 6, 8, 10, 12, 14, 16};
+  static constexpr int refreshPassesValuesCount = 7;
   // Alignment: 0=LEFT, 1=CENTER, 2=RIGHT
   // showChapterNumbers: 0=OFF, 1=ON
 
@@ -68,6 +73,7 @@ class SettingsScreen : public Screen {
   void saveSettings();
   void applyFontSettings();
   void applyUIFontSettings();
+  void applyRefreshPasses();
   String getSettingName(int index);
   String getSettingValue(int index);
 };

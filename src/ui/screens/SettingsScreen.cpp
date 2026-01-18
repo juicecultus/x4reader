@@ -14,6 +14,7 @@
 constexpr int SettingsScreen::marginValues[];
 constexpr int SettingsScreen::lineHeightValues[];
 constexpr int SettingsScreen::paragraphSpacingValues[];
+constexpr int SettingsScreen::refreshPassesValues[];
 
 SettingsScreen::SettingsScreen(EInkDisplay& display, TextRenderer& renderer, UIManager& uiManager)
     : display(display), textRenderer(renderer), uiManager(uiManager) {}
@@ -188,6 +189,12 @@ void SettingsScreen::toggleCurrentSetting() {
     case 15:  // Startup
       startupBehaviorIndex = 1 - startupBehaviorIndex;
       break;
+    case 16:  // Refresh Passes
+      refreshPassesIndex++;
+      if (refreshPassesIndex >= refreshPassesValuesCount)
+        refreshPassesIndex = 0;
+      applyRefreshPasses();
+      break;
   }
   saveSettings();
   show();
@@ -289,6 +296,17 @@ void SettingsScreen::loadSettings() {
     startupBehaviorIndex = startupBehavior ? 1 : 0;
   }
 
+  // Refresh passes: load and find index
+  int refreshPasses = 12;  // Default
+  if (s.getInt(String("settings.refreshPasses"), refreshPasses)) {
+    for (int i = 0; i < refreshPassesValuesCount; i++) {
+      if (refreshPassesValues[i] == refreshPasses) {
+        refreshPassesIndex = i;
+        break;
+      }
+    }
+  }
+
   // Apply the loaded font settings
   applyFontSettings();
   applyUIFontSettings();
@@ -309,6 +327,7 @@ void SettingsScreen::saveSettings() {
   s.setInt(String("settings.orientation"), orientationIndex);
   s.setInt(String("settings.sleepTimeout"), sleepTimeoutIndex);
   s.setInt(String("settings.startupBehavior"), startupBehaviorIndex);
+  s.setInt(String("settings.refreshPasses"), refreshPassesValues[refreshPassesIndex]);
 
   if (!s.save()) {
     Serial.println("SettingsScreen: Failed to write settings.cfg");
@@ -349,6 +368,8 @@ String SettingsScreen::getSettingName(int index) {
       return "Clear Cache";
     case 15:
       return "Startup";
+    case 16:
+      return "Refresh Passes";
     default:
       return "";
   }
@@ -439,6 +460,8 @@ String SettingsScreen::getSettingValue(int index) {
       return clearCacheStatus ? "OK" : "FAIL";
     case 15:
       return startupBehaviorIndex ? "Resume" : "Home";
+    case 16:
+      return String(refreshPassesValues[refreshPassesIndex]);
     default:
       return "";
   }
@@ -501,4 +524,9 @@ void SettingsScreen::applyUIFontSettings() {
   } else {
     setMainFont(&MenuFontBig);
   }
+}
+
+void SettingsScreen::applyRefreshPasses() {
+  // Apply the refresh passes setting to the display
+  display.setRefreshPasses(refreshPassesValues[refreshPassesIndex]);
 }

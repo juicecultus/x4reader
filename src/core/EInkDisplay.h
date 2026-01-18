@@ -64,6 +64,9 @@ class EInkDisplay {
   // LUT control
   void setCustomLUT(bool enabled, const unsigned char* lutData = nullptr);
 
+  // Set FastEPD refresh passes (Paper S3 only)
+  void setRefreshPasses(int passes);
+
   // Power management
   void deepSleep();
 

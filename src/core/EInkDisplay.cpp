@@ -189,9 +189,9 @@ void EInkDisplay::begin() {
     Serial.printf("[%lu] FastEPD initPanel returned %d\n", millis(), rc);
     g_epd.setMode(BB_MODE_1BPP);
 
-    // Increase partial update passes for cleaner text rendering (reduces ghosting)
-    // Default is typically 2-3 passes; more passes = cleaner but slower
-    g_epd.setPasses(12, 12);  // 10 partial passes, 10 full passes
+    // Set default refresh passes (can be changed via settings.refreshPasses)
+    // Default is 12 passes; more passes = cleaner but slower
+    g_epd.setPasses(8, 8);
 
     // Keep FastEPD at its native rotation.
     // FastEPD's internal 1bpp packing differs across rotations; directly memcpy'ing
@@ -821,5 +821,15 @@ void EInkDisplay::saveFrameBufferAsPBM(const char* filename) {
 #else
   (void)filename;
   Serial.println("saveFrameBufferAsPBM is not supported on Arduino builds.");
+#endif
+}
+
+void EInkDisplay::setRefreshPasses(int passes) {
+#ifdef USE_M5UNIFIED
+  // Set FastEPD refresh passes for both partial and full updates
+  g_epd.setPasses(passes, passes);
+  Serial.printf("[%lu] FastEPD passes set to %d\n", millis(), passes);
+#else
+  (void)passes;
 #endif
 }
