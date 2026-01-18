@@ -910,7 +910,8 @@ void UIManager::renderStatusHeader(TextRenderer& renderer) {
   const int16_t gap = 6;
 
   int16_t groupW = iconW + gap + (int16_t)tw;
-  int16_t groupX = 480 - marginRight - groupW;
+  const int16_t pageW = (int16_t)EInkDisplay::DISPLAY_WIDTH;
+  int16_t groupX = pageW - marginRight - groupW;
   if (groupX < 0)
     groupX = 0;
 

@@ -59,13 +59,16 @@ void SettingsScreen::renderSettings() {
 
   textRenderer.setFont(getTitleFont());
 
+  const int16_t pageW = (int16_t)EInkDisplay::DISPLAY_WIDTH;
+  const int16_t pageH = (int16_t)EInkDisplay::DISPLAY_HEIGHT;
+
   // Center the title horizontally
   {
     const char* title = "Settings";
     int16_t x1, y1;
     uint16_t w, h;
     textRenderer.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
-    int16_t centerX = (480 - (int)w) / 2;
+    int16_t centerX = (pageW - (int)w) / 2;
     textRenderer.setCursor(centerX, 75);
     textRenderer.print(title);
   }
@@ -75,7 +78,7 @@ void SettingsScreen::renderSettings() {
   // Render settings list
   const int lineHeight = 28;
   int totalHeight = SETTINGS_COUNT * lineHeight;
-  int startY = (800 - totalHeight) / 2;  // center vertically
+  int startY = (pageH - totalHeight) / 2;
 
   for (int i = 0; i < SETTINGS_COUNT; ++i) {
     String displayName = getSettingName(i);
@@ -89,7 +92,7 @@ void SettingsScreen::renderSettings() {
     int16_t x1, y1;
     uint16_t w, h;
     textRenderer.getTextBounds(displayName.c_str(), 0, 0, &x1, &y1, &w, &h);
-    int16_t centerX = (480 - (int)w) / 2;
+    int16_t centerX = (pageW - (int)w) / 2;
     int16_t rowY = startY + i * lineHeight;
     textRenderer.setCursor(centerX, rowY);
     textRenderer.print(displayName);

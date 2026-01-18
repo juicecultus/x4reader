@@ -3,10 +3,6 @@
 
 #include <Arduino.h>
 
-#ifdef USE_M5UNIFIED
-#include <M5Unified.h>
-#endif
-
 class Buttons {
  public:
   Buttons();

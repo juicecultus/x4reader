@@ -73,11 +73,11 @@ void TextRenderer::drawPixel(int16_t x, int16_t y, bool state) {
   }
 
   // Bounds checking in logical coordinate space
-  int16_t logicalW = EInkDisplay::DISPLAY_HEIGHT;  // 480
-  int16_t logicalH = EInkDisplay::DISPLAY_WIDTH;   // 800
+  int16_t logicalW = EInkDisplay::DISPLAY_WIDTH;
+  int16_t logicalH = EInkDisplay::DISPLAY_HEIGHT;
   if (orientation == LandscapeClockwise || orientation == LandscapeCounterClockwise) {
-    logicalW = EInkDisplay::DISPLAY_WIDTH;   // 800
-    logicalH = EInkDisplay::DISPLAY_HEIGHT;  // 480
+    logicalW = EInkDisplay::DISPLAY_HEIGHT;
+    logicalH = EInkDisplay::DISPLAY_WIDTH;
   }
   if (x < 0 || x >= logicalW || y < 0 || y >= logicalH) {
     return;
@@ -87,24 +87,24 @@ void TextRenderer::drawPixel(int16_t x, int16_t y, bool state) {
   int16_t rotatedY = 0;
   switch (orientation) {
     case Portrait:
-      // Logical portrait (480x800) -> panel (800x480): 90 deg clockwise
-      rotatedX = y;
-      rotatedY = EInkDisplay::DISPLAY_HEIGHT - 1 - x;
+      // Native portrait framebuffer coordinates
+      rotatedX = x;
+      rotatedY = y;
       break;
     case LandscapeClockwise:
-      // Logical landscape (800x480) rotated 180 degrees
-      rotatedX = EInkDisplay::DISPLAY_WIDTH - 1 - x;
-      rotatedY = EInkDisplay::DISPLAY_HEIGHT - 1 - y;
-      break;
-    case PortraitInverted:
-      // Logical portrait (480x800) -> panel (800x480): 90 deg counter-clockwise
+      // Logical landscape (H x W) -> portrait framebuffer: rotate 90 deg clockwise
       rotatedX = EInkDisplay::DISPLAY_WIDTH - 1 - y;
       rotatedY = x;
       break;
+    case PortraitInverted:
+      // Portrait inverted (rotate 180)
+      rotatedX = EInkDisplay::DISPLAY_WIDTH - 1 - x;
+      rotatedY = EInkDisplay::DISPLAY_HEIGHT - 1 - y;
+      break;
     case LandscapeCounterClockwise:
-      // Logical landscape aligned with panel orientation
-      rotatedX = x;
-      rotatedY = y;
+      // Logical landscape (H x W) -> portrait framebuffer: rotate 90 deg counter-clockwise
+      rotatedX = y;
+      rotatedY = EInkDisplay::DISPLAY_HEIGHT - 1 - x;
       break;
   }
 

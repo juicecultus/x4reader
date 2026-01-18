@@ -37,7 +37,7 @@ class EInkDisplay {
   static const uint16_t DISPLAY_WIDTH = 800;
   static const uint16_t DISPLAY_HEIGHT = 480;
 #endif
-  static const uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
+  static const uint16_t DISPLAY_WIDTH_BYTES = (DISPLAY_WIDTH + 7) / 8;
   static const uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
 
   // Frame buffer operations

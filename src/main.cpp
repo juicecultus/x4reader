@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <FS.h>
-#include <SD.h>
+#include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -186,9 +187,12 @@ void enterDeepSleep() {
 
 void setup() {
 #ifdef USE_M5UNIFIED
-  auto cfg = M5.config();
-  M5.begin(cfg);
   Serial.begin(115200);
+  // Paper S3: keep power enabled when not using M5.begin().
+  rtc_gpio_init(GPIO_NUM_44);
+  rtc_gpio_set_direction(GPIO_NUM_44, RTC_GPIO_MODE_OUTPUT_ONLY);
+  rtc_gpio_set_level(GPIO_NUM_44, 1);
+  rtc_gpio_hold_en(GPIO_NUM_44);
 #else
   // Only start/wait for serial monitor if USB is connected
   pinMode(UART0_RXD, INPUT);

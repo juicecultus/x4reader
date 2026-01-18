@@ -2,6 +2,12 @@
 
 #ifdef USE_M5UNIFIED
 #include <algorithm>
+#include <FastEPD.h>
+
+static FASTEPD g_epd;
+static bool g_epdInited = false;
+static bool g_epdHasBaseline = false;
+static bool g_epdLoggedFirstFlush = false;
 #endif
 
 #include <cstring>
@@ -155,10 +161,27 @@ void EInkDisplay::begin() {
   Serial.printf("[%lu]   Initializing e-ink display driver...\n", millis());
 
 #ifdef USE_M5UNIFIED
-  // Paper S3: display is owned/initialized by M5Unified.
-  M5.Display.setRotation(0);
-  M5.Display.fillScreen(0xFFFF);
-  M5.Display.display();
+  // Paper S3: use FastEPD's native PaperS3 panel driver.
+  if (!g_epdInited) {
+    const int rc = g_epd.initPanel(BB_PANEL_M5PAPERS3);
+    Serial.printf("[%lu] FastEPD initPanel returned %d\n", millis(), rc);
+    g_epd.setMode(BB_MODE_1BPP);
+
+    // Keep FastEPD at its native rotation.
+    // FastEPD's internal 1bpp packing differs across rotations; directly memcpy'ing
+    // into a rotated buffer can produce corrupted vertical artifacts.
+    // We instead rotate/blit Macroreader's portrait framebuffer into FastEPD's native
+    // buffer format in displayBuffer().
+    g_epd.setRotation(0);
+    Serial.printf("[%lu] FastEPD rotated size: %d x %d\n", millis(), (int)g_epd.width(), (int)g_epd.height());
+    g_epd.clearWhite(true);
+    g_epd.backupPlane();
+    // Ensure the panel has a known on-screen baseline before any partial updates.
+    g_epd.fullUpdate(CLEAR_SLOW, true, NULL);
+    g_epd.backupPlane();
+    g_epdInited = true;
+    g_epdHasBaseline = true;
+  }
   isScreenOn = true;
 
 #elif defined(ARDUINO)
@@ -354,7 +377,7 @@ void EInkDisplay::drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, ui
   }
 
   // Calculate bytes per line for the image
-  uint16_t imageWidthBytes = w / 8;
+  uint16_t imageWidthBytes = (w + 7) / 8;
 
   // Copy image data to frame buffer
   for (uint16_t row = 0; row < h; row++) {
@@ -433,31 +456,85 @@ void EInkDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* 
 
 void EInkDisplay::displayBuffer(RefreshMode mode) {
 #ifdef USE_M5UNIFIED
-  // Convert 1bpp (MSB-first) framebuffer into RGB565 lines and push.
-  // This is not optimized yet, but it is low-memory and correct.
-  const uint16_t w = DISPLAY_WIDTH;
-  const uint16_t h = DISPLAY_HEIGHT;
-
-  // Use a modest line buffer to limit stack usage.
-  static std::vector<uint16_t> line;
-  if (line.size() != w) {
-    line.assign(w, 0xFFFF);
+  if (!g_epdInited) {
+    (void)mode;
+    return;
   }
 
-  const uint8_t* fb = frameBuffer;
-  const uint32_t rowBytes = DISPLAY_WIDTH_BYTES;
-  for (uint16_t y = 0; y < h; y++) {
-    const uint8_t* row = fb + (uint32_t)y * rowBytes;
-    for (uint16_t x = 0; x < w; x++) {
-      const uint8_t b = row[x / 8];
-      const uint8_t bit = 7 - (x % 8);
+  const uint16_t srcW = DISPLAY_WIDTH;
+  const uint16_t srcH = DISPLAY_HEIGHT;
+  const uint16_t dstW = (uint16_t)g_epd.width();
+  const uint16_t dstH = (uint16_t)g_epd.height();
+
+  const uint8_t* src = frameBuffer;
+  const uint32_t srcRowBytes = DISPLAY_WIDTH_BYTES;
+
+  uint8_t* dst = g_epd.currentBuffer();
+  const uint32_t dstRowBytes = (dstW + 7) / 8;
+
+  if (!g_epdLoggedFirstFlush) {
+    Serial.printf("[%lu] FastEPD flush: src=%ux%u dst=%ux%u srcRB=%u dstRB=%u\n", millis(), (unsigned)srcW,
+                  (unsigned)srcH, (unsigned)dstW, (unsigned)dstH, (unsigned)srcRowBytes, (unsigned)dstRowBytes);
+    g_epdLoggedFirstFlush = true;
+  }
+
+  // Rotate portrait -> FastEPD's native buffer format.
+  // This avoids rotation-specific 1bpp bit packing differences inside FastEPD.
+  memset(dst, 0xFF, dstRowBytes * dstH);
+
+  for (uint16_t yOut = 0; yOut < dstH; yOut++) {
+    uint8_t* dstRow = dst + (uint32_t)yOut * dstRowBytes;
+    for (uint16_t xOut = 0; xOut < dstW; xOut++) {
+      uint16_t xIn = 0;
+      uint16_t yIn = 0;
+
+#ifdef M5_PORTRAIT_ROTATION
+      if (M5_PORTRAIT_ROTATION == 1) {
+        // Rotate portrait -> landscape (CW 90)
+        xIn = yOut;
+        yIn = (uint16_t)(srcH - 1 - xOut);
+      } else {
+        // Rotate portrait -> landscape (CCW 90)
+        xIn = (uint16_t)(srcW - 1 - yOut);
+        yIn = xOut;
+      }
+#else
+      // Default to CCW 90
+      xIn = (uint16_t)(srcW - 1 - yOut);
+      yIn = xOut;
+#endif
+
+      if (xIn >= srcW || yIn >= srcH) {
+        continue;
+      }
+
+      const uint8_t* srcRow = src + (uint32_t)yIn * srcRowBytes;
+      const uint8_t b = srcRow[xIn / 8];
+      const uint8_t bit = 7 - (xIn % 8);
       const bool isWhite = ((b >> bit) & 0x01) != 0;
-      line[x] = isWhite ? 0xFFFF : 0x0000;
+      const uint8_t dstMask = (uint8_t)(0x80 >> (xOut & 7));
+      if (isWhite) {
+        dstRow[xOut / 8] |= dstMask;
+      } else {
+        dstRow[xOut / 8] &= (uint8_t)~dstMask;
+      }
     }
-    M5.Display.pushImage(0, y, w, 1, line.data());
   }
-  M5.Display.display();
-  (void)mode;
+
+  if (mode == FULL_REFRESH) {
+    g_epd.fullUpdate(CLEAR_SLOW, true, NULL);
+    g_epd.backupPlane();
+    g_epdHasBaseline = true;
+  } else if (!g_epdHasBaseline) {
+    g_epd.fullUpdate(CLEAR_SLOW, true, NULL);
+    g_epd.backupPlane();
+    g_epdHasBaseline = true;
+  } else {
+    // Fast refresh paths: prefer partial updates to reduce flashing.
+    g_epd.partialUpdate(true, 0, 4095);
+    g_epd.backupPlane();
+  }
+
   swapBuffers();
 
 #elif defined(ARDUINO)

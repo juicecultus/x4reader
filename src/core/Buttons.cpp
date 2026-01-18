@@ -14,7 +14,9 @@ Buttons::Buttons() : currentState(0), previousState(0) {
 
 void Buttons::begin() {
 #ifdef USE_M5UNIFIED
-  // M5Unified handles button pin setup.
+  // Paper S3: do not configure GPIO38/39 here.
+  // On Paper S3 these are used by the SD card SPI bus (MOSI=38, SCK=39).
+  // Navigation will be via touch; keep this as a no-op for now.
   return;
 #else
   pinMode(BUTTON_ADC_PIN_1, INPUT);
@@ -42,17 +44,7 @@ uint8_t Buttons::getState() {
   uint8_t state = 0;
 
 #ifdef USE_M5UNIFIED
-  // Paper S3: map M5 buttons to Macroreader buttons.
-  // Note: this is a first-pass mapping; we can later incorporate touch gestures.
-  if (M5.BtnA.isPressed()) {
-    state |= (1 << BACK);
-  }
-  if (M5.BtnB.isPressed()) {
-    state |= (1 << CONFIRM);
-  }
-  if (M5.BtnC.isPressed()) {
-    state |= (1 << RIGHT);
-  }
+  // Paper S3: touch-driven navigation (no GPIO buttons).
   return state;
 #else
 
