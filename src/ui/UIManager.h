@@ -111,6 +111,10 @@ class UIManager {
     return *settings;
   }
 
+  Buttons& getButtons() {
+    return buttons;
+  }
+
   Screen* getScreen(ScreenId id) {
     auto it = screens.find(id);
     if (it != screens.end()) {

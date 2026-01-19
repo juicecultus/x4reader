@@ -1253,6 +1253,10 @@ void UIManager::showScreen(ScreenId id) {
   // Update button tap zones for the current orientation
   buttons.setOrientation(orientation);
 
+  // Disable 3-zone touch navigation while the on-screen keyboard is active.
+  // This prevents edge taps from being interpreted as LEFT/RIGHT/CONFIRM.
+  buttons.setZoneNavigationEnabled(id != ScreenId::WifiPasswordEntry);
+
   previousScreen = currentScreen;
   currentScreen = id;
   // Call activate so screens can perform any work needed when they become

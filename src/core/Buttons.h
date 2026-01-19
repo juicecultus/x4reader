@@ -13,6 +13,10 @@ class Buttons {
   // Set orientation for touch zone mapping (0=Portrait, 1=Landscape)
   void setOrientation(int orientation) { _orientation = orientation; }
 
+  // Enable/disable the default 3-zone touch navigation mapping (LEFT/RIGHT/CONFIRM/BACK zone).
+  // This should be disabled for screens that need precise touch hit-testing (e.g. on-screen keyboard).
+  void setZoneNavigationEnabled(bool enabled) { _zoneNavigationEnabled = enabled; }
+
   // Button state queries
   bool isDown(uint8_t buttonIndex);                    // Is button currently held down?
   bool isPressed(uint8_t buttonIndex);                 // Was button just pressed this frame?
@@ -22,6 +26,11 @@ class Buttons {
 
   bool wasAnyPressed();
   bool wasAnyReleased();
+
+  // Raw touch coordinate access (for custom touch handling like keyboards)
+  // Returns true if touch is active, fills x/y with portrait coordinates
+  bool getTouchPosition(int16_t& x, int16_t& y);
+  bool wasTouchReleased();  // True if touch was just released this frame
 
   // Button indices
   static const uint8_t BACK = 0;
@@ -67,6 +76,15 @@ class Buttons {
 
   // Current orientation for touch zone mapping (0=Portrait, 1=Landscape)
   int _orientation = 0;
+
+  bool _zoneNavigationEnabled = true;
+
+  // Touch state tracking
+  bool _touchActive = false;
+  bool _prevTouchActive = false;
+  int16_t _touchX = 0;
+  int16_t _touchY = 0;
+  int _touchCount = 0;
 };
 
 #endif

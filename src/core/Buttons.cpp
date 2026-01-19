@@ -163,7 +163,83 @@ uint8_t Buttons::getState() {
 
 void Buttons::update() {
   unsigned long currentTime = millis();
-  uint8_t rawState = getState();
+  
+  // Update touch state tracking
+  _prevTouchActive = _touchActive;
+  
+#ifdef USE_M5UNIFIED
+  if (g_bbctInited) {
+    TOUCHINFO ti;
+    g_bbct.getSamples(&ti);
+    _touchCount = ti.count;
+    if (ti.count > 0) {
+      _touchActive = true;
+      // bb_captouch coordinates already match the display coordinate system.
+      // Do not invert, otherwise touches are mirrored and hit-testing becomes unreliable.
+      _touchX = (int16_t)ti.x[0];
+      _touchY = (int16_t)ti.y[0];
+    } else {
+      _touchActive = false;
+    }
+  }
+#endif
+  
+  // Use cached touch state instead of calling getState() which would read touch again
+  uint8_t rawState = 0;
+#ifdef USE_M5UNIFIED
+  // Map cached touch coordinates to button zones
+  if (_touchActive) {
+    // Two-finger touch as a global BACK
+    if (_touchCount >= 2) {
+      rawState |= (1 << BACK);
+    } else {
+      if (!_zoneNavigationEnabled) {
+        // Screen is doing its own touch handling (e.g. keyboard). Don't map to zones.
+      } else {
+      const int16_t x = _touchX;
+      const int16_t y = _touchY;
+      
+      if (x >= 0 && x < (int16_t)EInkDisplay::DISPLAY_WIDTH && 
+          y >= 0 && y < (int16_t)EInkDisplay::DISPLAY_HEIGHT) {
+        const int16_t backZoneW = 90;
+        const int16_t backZoneH = 90;
+        
+        if (_orientation == 0) {
+          // Portrait mode
+          if (x < backZoneW && y < backZoneH) {
+            rawState |= (1 << BACK);
+          } else {
+            const int16_t w = (int16_t)EInkDisplay::DISPLAY_WIDTH;
+            if (x < (w / 3)) {
+              rawState |= (1 << RIGHT);
+            } else if (x >= (w - (w / 3))) {
+              rawState |= (1 << LEFT);
+            } else {
+              rawState |= (1 << CONFIRM);
+            }
+          }
+        } else {
+          // Landscape mode
+          if (x < backZoneW && y < backZoneH) {
+            rawState |= (1 << BACK);
+          } else {
+            const int16_t h = (int16_t)EInkDisplay::DISPLAY_HEIGHT;
+            if (y < (h / 3)) {
+              rawState |= (1 << RIGHT);
+            } else if (y >= (h - (h / 3))) {
+              rawState |= (1 << LEFT);
+            } else {
+              rawState |= (1 << CONFIRM);
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+#else
+  rawState = getState();
+#endif
 
   // Save current state as previous before updating
   previousState = currentState;
@@ -236,4 +312,21 @@ unsigned long Buttons::getHoldDuration(uint8_t buttonIndex) {
     return 0;  // Button not held
   }
   return millis() - lastDebounceTime[buttonIndex];
+}
+
+bool Buttons::getTouchPosition(int16_t& x, int16_t& y) {
+#ifdef USE_M5UNIFIED
+  if (_touchActive) {
+    x = _touchX;
+    y = _touchY;
+    return true;
+  }
+#endif
+  (void)x;
+  (void)y;
+  return false;
+}
+
+bool Buttons::wasTouchReleased() {
+  return _prevTouchActive && !_touchActive;
 }
