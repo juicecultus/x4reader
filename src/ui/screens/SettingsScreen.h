@@ -25,7 +25,7 @@ class SettingsScreen : public Screen {
 
   // Menu navigation
   int selectedIndex = 0;
-  static constexpr int SETTINGS_COUNT = 19;
+  static constexpr int SETTINGS_COUNT = 20;
 
   // Setting values and their current indices
   int marginIndex = 1;
@@ -38,6 +38,9 @@ class SettingsScreen : public Screen {
   int uiFontSizeIndex = 7;  // 0=Small(14), 1=Large(28)
   // Sleep screen mode: 0=Book Cover (default), 1=SD Random
   int sleepScreenModeIndex = 0;
+
+  // Cover quality: 0=Standard (1-bit), 1=Grayscale (2-bit)
+  int coverQualityIndex = 1;  // Default to grayscale
 
   // Reading orientation: 0=Portrait, 1=Landscape
   int orientationIndex = 0;

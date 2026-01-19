@@ -644,7 +644,13 @@ void UIManager::showSleepScreen() {
 
 #ifdef USE_M5UNIFIED
   // Paper S3: Use the 2-bit grayscale path with FastEPD 4BPP conversion
-  if (usedRandomCover && coverBmpPath.length() > 0) {
+  // Check cover quality setting: 0=Standard (1-bit), 1=Grayscale (2-bit)
+  int coverQuality = 1;  // Default to grayscale
+  if (settings) {
+    settings->getInt(String("settings.coverQuality"), coverQuality);
+  }
+  
+  if (usedRandomCover && coverBmpPath.length() > 0 && coverQuality == 1) {
     String lf = coverBmpPath;
     lf.toLowerCase();
     
